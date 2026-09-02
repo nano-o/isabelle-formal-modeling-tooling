@@ -1,0 +1,10 @@
+{
+  "name": "isabelle-formal-modeling",
+  "version": "0.1.0",
+  "description": "Isabelle formal-modeling workflow: setup skill, I/Q MCP bridge launched from the tooling clone named by ISABELLE_TOOLING_ROOT, and the ic2 proof-worker agent.",
+  "author": {
+    "name": "Giuliano Losa"
+  },
+  "homepage": "https://github.com/nano-o/isabelle-formal-modeling-tooling",
+  "mcpServers": "./.mcp.json"
+}

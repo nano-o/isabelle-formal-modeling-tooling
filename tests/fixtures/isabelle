@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Mock `isabelle` for the wrapper tests. State lives in MOCK_ISABELLE_STATE_DIR.
+set -euo pipefail
+
+state_dir="${MOCK_ISABELLE_STATE_DIR:?}"
+mkdir -p "$state_dir"
+if [[ -n "${MOCK_ISABELLE_LOG:-}" ]]; then
+  printf '%s\n' "$*" >>"$MOCK_ISABELLE_LOG"
+fi
+
+case "${1:-}" in
+  version) printf '%s\n' "${MOCK_ISABELLE_VERSION:-Isabelle2025-2}" ;;
+  getenv) printf '%s\n' "$state_dir/isabelle-home-user" ;;
+  components)
+    printf 'Available components:\n  /opt/Isabelle2025-2\n'
+    [[ -f "$state_dir/components" ]] && sed 's/^/  /' "$state_dir/components"
+    ;;
+  ic2)
+    shift
+    case "${1:-} ${2:-}" in
+      "server start")
+        printf 'running\n' >"$state_dir/server"
+        printf 'start\n' >>"$state_dir/lifecycle"
+        printf 'server started\n'
+        ;;
+      "server stop")
+        rm -f "$state_dir/server"
+        printf 'stop\n' >>"$state_dir/lifecycle"
+        printf 'server stopped\n'
+        ;;
+      "server status")
+        [[ -f "$state_dir/server" ]] || { printf 'no server\n' >&2; exit 3; }
+        printf '%s\n' "${MOCK_SERVER_STATUS_OUTPUT:-mock: state=ready session=HOL pid=${MOCK_SERVER_PID:-$$} up=1s idle conns=1}"
+        exit "${MOCK_STATUS_RC:-0}"
+        ;;
+      "check status")
+        if [[ -n "${MOCK_STATUS_SEQUENCE_FILE:-}" && -s "$MOCK_STATUS_SEQUENCE_FILE" ]]; then
+          status="$(sed -n '1p' "$MOCK_STATUS_SEQUENCE_FILE")"
+          sed '1d' "$MOCK_STATUS_SEQUENCE_FILE" >"$MOCK_STATUS_SEQUENCE_FILE.next"
+          mv "$MOCK_STATUS_SEQUENCE_FILE.next" "$MOCK_STATUS_SEQUENCE_FILE"
+          [[ "$status" == "<EMPTY>" ]] || printf '%s\n' "$status"
+        elif [[ -n "${MOCK_STATUS_OUTPUT:-}" ]]; then
+          printf '%s\n' "$MOCK_STATUS_OUTPUT"
+        fi
+        exit "${MOCK_STATUS_RC:-0}"
+        ;;
+      *)
+        printf 'mock ic2: %s (cwd %s)\n' "$*" "$PWD"
+        ;;
+    esac
+    ;;
+  *)
+    printf 'unexpected mock isabelle command: %s\n' "$*" >&2
+    exit 64
+    ;;
+esac

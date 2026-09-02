@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "iq": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/iq-bridge.sh",
+      "args": [],
+      "env": { "IQ_MCP_BRIDGE_PORT": "8765" }
+    }
+  }
+}

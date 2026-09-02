@@ -1,0 +1,12 @@
+{
+  "name": "isabelle-formal-modeling-tooling",
+  "interface": { "displayName": "Isabelle formal-modeling tooling" },
+  "plugins": [
+    {
+      "name": "isabelle-formal-modeling",
+      "source": { "source": "local", "path": "./extension" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Development"
+    }
+  ]
+}

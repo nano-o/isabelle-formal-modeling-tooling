@@ -1,0 +1,7 @@
+session @SESSION@ = HOL +
+  description "Code-level Isabelle/HOL model of @PROJECT_NAME@ and the properties proved about it."
+  options [timeout = 600, document = false]
+  sessions
+    "HOL-Library"
+  theories
+    @SESSION@

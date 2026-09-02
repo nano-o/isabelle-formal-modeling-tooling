@@ -96,6 +96,13 @@ else
 fi
 
 tooling_head="$(git -C "$TOOLING_ROOT" rev-parse HEAD 2>/dev/null || true)"
+# A clone checked out at a release commit carries extension/REVISION naming
+# the source commit it was built from; that is the revision everything is
+# compared against. A source checkout has no REVISION and HEAD is the source.
+tooling_source_rev="$tooling_head"
+if [[ -f "$TOOLING_ROOT/extension/REVISION" ]]; then
+  tooling_source_rev="$(sed -n 's/^source_revision=//p' "$TOOLING_ROOT/extension/REVISION" | head -n 1)"
+fi
 dirty="$(git -C "$TOOLING_ROOT" status --porcelain --ignore-submodules=none 2>/dev/null; git -C "$AUTOCORRODE_DIR" status --porcelain 2>/dev/null | sed 's|^|AutoCorrode/|')"
 if [[ -n "$dirty" ]]; then
   if [[ "$ALLOW_DIRTY" == true ]]; then
@@ -109,12 +116,57 @@ fi
 if [[ "$descriptor_ok" == true ]]; then
   if [[ -z "${PROJECT_CONF[tooling_revision]+set}" ]]; then
     problem "Descriptor has no tooling_revision; set it to the tooling clone revision the artifacts were validated against ($tooling_head)."
-  elif [[ "${PROJECT_CONF[tooling_revision]}" == "$tooling_head" ]]; then
-    ok "Descriptor tooling_revision matches the tooling clone HEAD"
+  elif [[ "${PROJECT_CONF[tooling_revision]}" == "$tooling_source_rev" ]]; then
+    ok "Descriptor tooling_revision matches the tooling clone ($tooling_source_rev)"
   else
-    problem "Descriptor tooling_revision ${PROJECT_CONF[tooling_revision]} differs from the tooling clone HEAD $tooling_head; check out that revision or revalidate and update the descriptor."
+    problem "Descriptor tooling_revision ${PROJECT_CONF[tooling_revision]} differs from the tooling clone's source revision $tooling_source_rev; check out that revision or revalidate and update the descriptor."
   fi
 fi
+
+# --- installed agent-host extensions ------------------------------------------------
+#
+# Each host caches installed plugins under its own directory. A released
+# extension carries REVISION; its source_revision must be the tooling clone's,
+# or the skills an agent reads and the scripts it runs come from different
+# revisions. A host with no installed extension is a note, not a failure.
+
+check_extension() {
+  local host="$1" cache_root="$2" agent_file="$3"
+  local revisions rev expected_sha install_dir src tag
+  [[ -d "$cache_root" ]] || { note "$host: no plugin cache at $cache_root; extension not installed for this host"; return; }
+  mapfile -t revisions < <(find "$cache_root" -mindepth 3 -maxdepth 4 -path '*/isabelle-formal-modeling/*' -name REVISION 2>/dev/null | sort)
+  if [[ "${#revisions[@]}" -eq 0 ]]; then
+    if find "$cache_root" -mindepth 2 -maxdepth 3 -type d -name isabelle-formal-modeling 2>/dev/null | grep -q .; then
+      note "$host: the installed extension has no REVISION file (a development install, not a release); revision skew cannot be checked"
+    else
+      note "$host: extension not installed"
+    fi
+    return
+  fi
+  for rev in "${revisions[@]}"; do
+    install_dir="$(dirname "$rev")"
+    src="$(sed -n 's/^source_revision=//p' "$rev" | head -n 1)"
+    tag="$(sed -n 's/^release_tag=//p' "$rev" | head -n 1)"
+    if [[ "$src" == "$tooling_source_rev" ]]; then
+      ok "$host: installed extension $tag matches the tooling clone ($install_dir)"
+    else
+      problem "$host: installed extension $tag was built from $src, but the tooling clone is at $tooling_source_rev; upgrade the extension or check out that revision ($install_dir)"
+    fi
+    if [[ -n "$agent_file" ]]; then
+      expected_sha="$(sed -n 's/^codex_agent_sha256=//p' "$rev" | head -n 1)"
+      if [[ ! -f "$agent_file" ]]; then
+        problem "$host: proof-worker profile is not installed; run: install -m 0644 $install_dir/codex/ic2_prover.toml $agent_file"
+      elif [[ "$(openssl dgst -sha256 "$agent_file" | awk '{print $NF}')" == "$expected_sha" ]]; then
+        ok "$host: installed proof-worker profile matches the extension ($agent_file)"
+      else
+        problem "$host: installed proof-worker profile differs from the extension's; reinstall: install -m 0644 $install_dir/codex/ic2_prover.toml $agent_file"
+      fi
+    fi
+  done
+}
+
+check_extension "Claude Code" "$HOME/.claude/plugins/cache" ""
+check_extension "Codex CLI" "${CODEX_HOME:-$HOME/.codex}/plugins/cache" "${CODEX_HOME:-$HOME/.codex}/agents/ic2_prover.toml"
 
 # --- ic2 component -----------------------------------------------------------------
 

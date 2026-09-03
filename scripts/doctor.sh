@@ -130,13 +130,34 @@ fi
 # or the skills an agent reads and the scripts it runs come from different
 # revisions. A host with no installed extension is a note, not a failure.
 
+# installed_extension_dirs HOST CACHE_ROOT: the directories of the currently
+# installed extension. Claude Code records the active version's path in
+# installed_plugins.json and keeps superseded versions in its cache for a
+# while; Codex CLI's cache holds only the installed version.
+installed_extension_dirs() {
+  local host="$1" cache_root="$2"
+  local registry="$HOME/.claude/plugins/installed_plugins.json"
+  if [[ "$host" == "Claude Code" && -f "$registry" ]]; then
+    python3 - "$registry" <<'PYEOF' 2>/dev/null
+import json, sys
+data = json.load(open(sys.argv[1]))
+for key, entries in data.get("plugins", {}).items():
+    if key.startswith("isabelle-formal-modeling@"):
+        for entry in entries:
+            print(entry["installPath"])
+PYEOF
+  else
+    find "$cache_root" -mindepth 2 -maxdepth 3 -type d -path '*/isabelle-formal-modeling/*' 2>/dev/null | sort
+  fi
+}
+
 check_extension() {
   local host="$1" cache_root="$2" agent_file="$3"
   local revisions rev expected_sha install_dir src tag
   [[ -d "$cache_root" ]] || { note "$host: no plugin cache at $cache_root; extension not installed for this host"; return; }
-  mapfile -t revisions < <(find "$cache_root" -mindepth 3 -maxdepth 4 -path '*/isabelle-formal-modeling/*' -name REVISION 2>/dev/null | sort)
+  mapfile -t revisions < <(installed_extension_dirs "$host" "$cache_root" | while read -r d; do [[ -f "$d/REVISION" ]] && echo "$d/REVISION"; done)
   if [[ "${#revisions[@]}" -eq 0 ]]; then
-    if find "$cache_root" -mindepth 2 -maxdepth 3 -type d -name isabelle-formal-modeling 2>/dev/null | grep -q .; then
+    if installed_extension_dirs "$host" "$cache_root" | grep -q .; then
       note "$host: the installed extension has no REVISION file (a development install, not a release); revision skew cannot be checked"
     else
       note "$host: extension not installed"

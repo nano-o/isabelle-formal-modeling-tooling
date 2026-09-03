@@ -96,7 +96,9 @@ isabelle build -D <checkout>/<formal>
 
 Doctor prints remediation commands and runs none; fix what it reports, in
 order, then rerun it. A green doctor and a building empty session is the
-finished setup. Then hand over to the proving and modelling skills.
+finished setup. Then hand over to `isabelle-modeling` (the conventions
+interview comes first), `isabelle-proving`, `isabelle-differential`, and
+`isabelle-assurance` for the statement of what was established.
 
 ## What this skill never does
 
@@ -106,5 +108,5 @@ nest the tooling clone inside a project checkout.
 
 ## Revision
 
-Skill revision marker: v0.6.1 (this line changes with each release so an
+Skill revision marker: v0.7.0 (this line changes with each release so an
 upgraded install is observable).

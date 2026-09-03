@@ -91,7 +91,7 @@ The MCP files cannot currently be shared. Claude Code requires the root
 requires the manifest's `mcpServers` path to name a direct server map and does
 not expand `PLUGIN_ROOT` or `CLAUDE_PLUGIN_ROOT` in a stdio `command`. Its
 declaration therefore forwards `ISABELLE_TOOLING_ROOT` with `env_vars` and
-uses a login shell to expand that variable before executing the launcher from
+uses a shell to expand that variable before executing the launcher from
 the tooling clone. No installed path or version is embedded in the package.
 
 Hosts install the extension from a Git URL of this repository, from the

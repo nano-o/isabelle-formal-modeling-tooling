@@ -1,7 +1,7 @@
 {
   "iq": {
     "command": "bash",
-    "args": ["-lc", "exec \"$ISABELLE_TOOLING_ROOT/extension/bin/iq-bridge.sh\""],
+    "args": ["-c", "exec \"$ISABELLE_TOOLING_ROOT/extension/bin/iq-bridge.sh\""],
     "env_vars": ["ISABELLE_TOOLING_ROOT"],
     "env": { "IQ_MCP_BRIDGE_PORT": "8765" }
   }

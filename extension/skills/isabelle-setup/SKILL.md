@@ -103,3 +103,8 @@ finished setup. Then hand over to the proving and modelling skills.
 Install or configure Claude Code or Codex CLI; download Isabelle; write under
 `$HOME` on its own; register a project's own AutoCorrode copy as a component;
 nest the tooling clone inside a project checkout.
+
+## Revision
+
+Skill revision marker: v0.2.0 (this line changes with each release so an
+upgraded install is observable).

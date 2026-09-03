@@ -1,6 +1,6 @@
 {
   "name": "isabelle-formal-modeling",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Isabelle formal-modeling workflow: setup, modelling, proving, differential-testing, and assurance skills, I/Q MCP bridge launched from the tooling clone named by ISABELLE_TOOLING_ROOT. The ic2 proof-worker profile ships in codex/ic2_prover.toml for installation under ~/.codex/agents/.",
   "author": {
     "name": "Giuliano Losa"

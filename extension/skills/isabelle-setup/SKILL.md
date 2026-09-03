@@ -108,5 +108,5 @@ nest the tooling clone inside a project checkout.
 
 ## Revision
 
-Skill revision marker: v0.7.0 (this line changes with each release so an
+Skill revision marker: v0.7.1 (this line changes with each release so an
 upgraded install is observable).

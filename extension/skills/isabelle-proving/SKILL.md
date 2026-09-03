@@ -177,4 +177,4 @@ branch, and commit. It never merges, cherry-picks, or removes the worktree or
 branch unless asked. Worktrees no longer need a submodule populated: the
 tooling and AutoCorrode live in the tooling clone.
 
-Skill revision marker: v0.7.0 — property workflow (quickcheck and nitpick first).
+Skill revision marker: v0.7.1.

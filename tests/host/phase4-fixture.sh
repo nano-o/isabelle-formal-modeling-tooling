@@ -79,13 +79,20 @@ block of formal/AGENTS.md, then finish the work.
   non-OK fee_status value (negative amount, bad rate, overflow), raised in the
   order the C checks them. fee_ceil's C return value is exactly that status.
 - Out-parameters and unassigned values: the default. An out-parameter plus a
-  Boolean or status return becomes a pair (or the value under Ok). Where the C
-  leaves the out-parameter unchanged, the model returns zero and the
-  definition's text block says so.
-- Casts and promotions: write every cast out (ucast for widening, the reading
-  change for same-width casts), and annotate each in the text block. The
-  comparison scaled > (uint64_t)INT64_MAX is unsigned; say so.
-- Unreachable defensive checks: model as written; there are none here.
+  Boolean return becomes a pair (bool x value): mul_u64_checked keeps its
+  Boolean, and fee_ceil's line that turns a false return into FEE_OVERFLOW
+  stays in fee_ceil. fee_ceil's status plus *fee is Ok fee / Err status, since
+  *fee is assigned exactly on the OK path. Where the C leaves an out-parameter
+  unchanged, the model returns zero and the definition's text block says so.
+- Casts and promotions: write every cast out and annotate each in the text
+  block. (uint64_t)rate_bps converts a signed value modulo 2^64, so it is scast
+  (ucast would agree only because of the preceding range check; if you prefer
+  ucast, say that justification). Same-width casts are a change of reading,
+  recorded in the text. The comparison scaled > (uint64_t)INT64_MAX is
+  unsigned; say so.
+- Unreachable defensive checks: model as written, and prove a lemma when one
+  is unreachable. Decide reachability yourself by reading the arithmetic; do
+  not take my word for which checks are live.
 - Undefined behaviour: state the definedness precondition per definition; this
   code has none (unsigned arithmetic, guarded division), and the text says so.
 - Naming: keep the C names (already snake_case) and the argument order.

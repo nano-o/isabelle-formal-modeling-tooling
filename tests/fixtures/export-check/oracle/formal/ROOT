@@ -1,0 +1,4 @@
+session Export_Fixture_Oracle = HOL +
+  options [document = false]
+  theories
+    Fixture

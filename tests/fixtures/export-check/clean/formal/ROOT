@@ -1,0 +1,4 @@
+session Export_Fixture_Clean = HOL +
+  options [document = false]
+  theories
+    Fixture

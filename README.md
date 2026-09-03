@@ -77,7 +77,9 @@ mkdir -p ~/.config/isabelle-iq && (umask 077; openssl rand -hex 32 > ~/.config/i
 
 The `extension/` directory is one package for both hosts: the shared
 `skills/` tree (`isabelle-setup` for binding a project, `isabelle-proving`
-for the two theory-editing workflows and the proof discipline), the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
+for the two theory-editing workflows and the proof discipline,
+`isabelle-differential` for testing an exported model against its
+implementation), the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
 Codex CLI reads the direct server map in `codex/.mcp.json`; both launch
 `bin/iq-bridge.sh`, the one place the extension resolves
 `ISABELLE_TOOLING_ROOT`), the Claude Code agent
@@ -241,6 +243,60 @@ The launcher accepts `--read-root DIR` for directories I/Q may read outside
 the project. Agents reach the live PIDE document through the I/Q MCP bridge,
 `AutoCorrode/iq/iq_bridge.py`, launched from this clone.
 
+## Differential testing: the model runner and the export check
+
+Differential testing is a method the `isabelle-differential` skill teaches,
+not a framework; the corpus, the validator, the mutation policy, and the
+implementation adapter are project code. Two pieces are the same for every
+project and live here.
+
+`scripts/model-runner.sh` evaluates the exported code-level model over
+records. It builds the session, exports the code named by the descriptor's
+`export_name`, loads it into `isabelle ML_process` together with the
+project's `model_dispatch` file and `model-runner/runner.ML`, and keeps
+input and output rows aligned. Records are opaque: each non-comment line goes
+to the project's `Model_Dispatch.dispatch : string -> string`, whose result
+is appended after a tab; `Model_Dispatch.Reject` marks a malformed record.
+The dispatch file is trusted semantic code that converts and routes but never
+decides (see the skill).
+
+```bash
+"$ISABELLE_TOOLING_ROOT/scripts/model-runner.sh" batch corpus.tsv model.tsv
+"$ISABELLE_TOOLING_ROOT/scripts/model-runner.sh" resident   # answers stdin line by line
+```
+
+Batch mode installs the output atomically and aborts on a rejected record or
+a dispatch failure. Resident mode prints `#ready`, then one answer per input
+line: the echoed record with its suffix, `#reject<TAB>LINE<TAB>MESSAGE`,
+`#error<TAB>LINE<TAB>MESSAGE`, or `#` for a blank line. Everything before
+`#ready` is loader output the client discards.
+
+`scripts/export-check.sh` checks that the executable model is the proved one.
+It audits every code equation of every constant in the exported program and
+every fact of the descriptor's `audit_collection` (default `export_audit`, a
+`named_theorems` the theories add their refinement theorems to): no oracle
+may appear in a derivation (`sorry` is the `skip_proof` oracle), and no axiom
+declared by a project theory unless it is a definition, a typedef, or HOL's
+contentless `type`-class arity; axioms of the distribution and imported
+libraries are the trusted baseline. It also scans project sources for
+`code_printing`, `code_module`, and `code_reserved` declarations touching a
+symbol of the exported program, accepted only through `--allow SYMBOL`.
+
+```bash
+"$ISABELLE_TOOLING_ROOT/scripts/export-check.sh"            # from inside the checkout
+"$ISABELLE_TOOLING_ROOT/scripts/export-check.sh" --verbose  # list every audited theorem
+```
+
+The audit runs inside the session heap, so the check builds with
+`isabelle build -b`; the first run rebuilds the session once even after a
+plain build passed. Heaps record theorem names and oracles but not full proof
+terms, so an axiom used from ML without ever being stored as a named fact is
+invisible; the check cannot vouch for the code generator, Poly/ML, or the
+dispatch ML either. `tests/fixtures/export-check/` holds a clean fixture and
+three that must fail: a `code_printing` override, a code equation proved by
+a declared `oracle`, and a code equation resting on an `axiomatization` in an
+imported theory.
+
 ## Doctor
 
 ```bash
@@ -262,7 +318,8 @@ file. It prints remediation commands and never runs them.
 ## Validation
 
 ```bash
-make validate     # bash -n, ShellCheck, and the tests behind a mock isabelle
+make validate         # bash -n, ShellCheck, and the tests behind a mock isabelle
+make check-isabelle   # export-check fixtures and the model runner, against a real Isabelle
 ```
 
 Host fixtures (a fresh session driving the setup skill, a doctor run, an

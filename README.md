@@ -78,8 +78,9 @@ mkdir -p ~/.config/isabelle-iq && (umask 077; openssl rand -hex 32 > ~/.config/i
 The `extension/` directory is one package for both hosts: the shared
 `skills/` tree (`isabelle-setup` for binding a project, `isabelle-proving`
 for the two theory-editing workflows and the proof discipline,
-`isabelle-differential` for testing an exported model against its
-implementation), the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
+`isabelle-modeling` for the code-level model standard and its conventions
+interview, `isabelle-differential` for testing an exported model against its
+implementation, `isabelle-assurance` for stating what the work establishes), the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
 Codex CLI reads the direct server map in `codex/.mcp.json`; both launch
 `bin/iq-bridge.sh`, the one place the extension resolves
 `ISABELLE_TOOLING_ROOT`), the Claude Code agent
@@ -188,8 +189,8 @@ the code (`X` and `.`) are the same mechanism. `ic2_base_session` is
 deliberately not the project session: when the project session is the
 server's logic, its theories are heap nodes and ic2 cannot expose their
 per-command diagnostics or `sorry` positions after edits. Optional keys
-`export_name`, `model_dispatch`, and `audit_collection` are reserved for the
-model runner and export check and are parsed but not yet consumed.
+`export_name`, `model_dispatch`, and `audit_collection` configure the model
+runner and the export check (below).
 
 Every entry point resolves the project the same way: `--project-root DIR`
 reads the descriptor there; otherwise the nearest ancestor of the current
@@ -328,6 +329,18 @@ installed or `--plugin-dir extension`, and `codex exec -C <checkout> ...`.
 Under Codex, pass `-c model_reasoning_effort=medium` for these runs; the
 user's default of `xhigh` turns a two-minute fixture into a ten-minute one and
 adds nothing to a smoke check. Run them in the background with a timeout.
+
+The Phase 4 host fixture, `tests/host/phase4-fixture.sh claude|codex WORKDIR`,
+copies the C project in `tests/fixtures/host/fee/` into a fresh checkout and
+drives one host through two turns: setup and the conventions interview, then
+the user's answers and the whole method (model, differential test, one
+proved property, assurance section). `tests/host/phase4-check.sh PROJECT`
+then runs the mechanical acceptance (doctor, settled conventions, clean
+build, export check, `run.sh`, the named property); the side-by-side review
+of the theory against `src/fee.c` is a reader's job, by section 4 of the
+`isabelle-modeling` skill. Run the fixture separately for each host, with
+distinct `--session` names if both run at once, so their heaps do not
+collide.
 
 See [docs/architecture.md](docs/architecture.md) for the process layout, and
 the standing notes [docs/security.md](docs/security.md) and

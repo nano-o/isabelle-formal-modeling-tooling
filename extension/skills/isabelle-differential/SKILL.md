@@ -179,4 +179,4 @@ must have both sides produce.
    corpus. Comparator, structural checks, per-tag `OK` and `ERR` mutations.
 4. Widen tag by tag. Commit the golden file last.
 
-Skill revision marker: v0.6.1 — resident-mode blank-line reply stated exactly.
+Skill revision marker: v0.7.0 — companion skills isabelle-modeling and isabelle-assurance added.

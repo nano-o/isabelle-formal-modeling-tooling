@@ -9,21 +9,29 @@ this project.
 
 ## Conventions
 
-Settle these with the user before writing the first definition, then record the
-answers here; the block doubles as the review checklist.
+The `isabelle-modeling` skill settles these with the user in an interview
+before the first definition is written; the answers are recorded here and the
+block doubles as the review checklist. An answer taken without the user is
+marked `(default; not yet confirmed)`.
 
-- **Source in scope:** which files and functions of @PROJECT_NAME@ are modeled.
-- **Errors and exceptions:** how failures the source detects are represented
-  (default: a lightweight result monad with a status enumeration and a bind
-  operator, raised in source order).
-- **Out-parameters:** how an out-parameter plus Boolean return is represented
-  (default: a pair, with zero on paths where the source leaves it unassigned).
+- **Source in scope:** which files and functions of @PROJECT_NAME@ are modeled,
+  and which callees are opaque or out of scope. (unsettled)
+- **Detected failures:** how failures the source detects — assertions,
+  exceptions, error returns — are represented (default: a lightweight result
+  type with a status enumeration and a bind operator, raised in source order).
+  (unsettled)
+- **Out-parameters and unassigned values:** how an out-parameter plus Boolean or
+  status return is represented (default: a pair, with zero on paths where the
+  source leaves it unassigned, said in the definition's text). (unsettled)
 - **Casts and promotions:** every cast and implicit promotion is written out;
-  same-width casts are annotated because their reading changes.
+  same-width casts are annotated because their reading changes. (unsettled)
 - **Unreachable defensive checks:** how checks the source can never reach are
-  treated.
+  treated (default: modelled as written). (unsettled)
 - **Undefined behaviour:** excluded by a stated definedness precondition, never
-  modelled as a result.
+  modelled as a result; the sanitizer run over the corpus is the evidence.
+  (unsettled)
+- **Naming:** the source-name to Isabelle-name convention, argument order kept.
+  (unsettled)
 
 ## Editing theories
 

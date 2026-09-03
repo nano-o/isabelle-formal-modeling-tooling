@@ -131,6 +131,24 @@ cd <worktree>
 - Before finishing: `isabelle build` the session, and check that proof
   sketches still describe the proofs.
 
+## Stating and proving a property
+
+- State a property over the code-level definitions or over a
+  characterization already proved equal to them (`isabelle-modeling`); write
+  the English sentence it stands for in a `text` block right before it.
+- Before any proof effort, run `quickcheck` and `nitpick` on the statement in
+  a REPL (word types are finite, so both are effective on them). A
+  counterexample means the property or its precondition is wrong; fix the
+  statement, never the model.
+- Prove on the simplest equal form: unfold the definition with `simp only:
+  f_def Let_def`, split on the result type and the branches, discharge the
+  arithmetic leaves with `sledgehammer`; a word-level goal usually needs the
+  no-wrap fact (`uint`/`sint` bounds and `unat`/`uint` arithmetic lemmas)
+  stated as a `have` first.
+- A finished property has no `sorry`, no `oracle`, no `axiomatization` under
+  it, and the session builds without `quick_and_dirty`; `query sorry` under
+  ic2 and the export check confirm this for the exported program.
+
 ## Isar pitfalls
 
 - Do not name a fact with a reserved keyword such as `prop` or `term`, or use
@@ -158,3 +176,5 @@ return, verifies the worker stopped its server, and reports worktree path,
 branch, and commit. It never merges, cherry-picks, or removes the worktree or
 branch unless asked. Worktrees no longer need a submodule populated: the
 tooling and AutoCorrode live in the tooling clone.
+
+Skill revision marker: v0.7.0 — property workflow (quickcheck and nitpick first).

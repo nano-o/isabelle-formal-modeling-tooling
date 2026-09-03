@@ -7,5 +7,5 @@
   },
   "homepage": "https://github.com/nano-o/isabelle-formal-modeling-tooling",
   "skills": "./skills/",
-  "mcpServers": "./codex/mcp.json"
+  "mcpServers": "./codex/.mcp.json"
 }

@@ -21,7 +21,7 @@ help:
 
 validate:
 	./scripts/render-agents.sh --check
-	python3 -c 'import json,sys; [json.load(open(f)) for f in sys.argv[1:]]' .claude-plugin/marketplace.json extension/.claude-plugin/plugin.json extension/.mcp.json extension/.codex-plugin/plugin.json extension/codex/mcp.json .agents/plugins/marketplace.json
+	python3 -c 'import json,sys; [json.load(open(f)) for f in sys.argv[1:]]' .claude-plugin/marketplace.json extension/.claude-plugin/plugin.json extension/.mcp.json extension/.codex-plugin/plugin.json extension/codex/.mcp.json .agents/plugins/marketplace.json
 	bash -n $(SCRIPT_FILES) $(TEST_FILES) $(TEST_SUPPORT_FILES)
 	shellcheck $(SCRIPT_FILES) $(TEST_FILES) $(TEST_SUPPORT_FILES)
 	@for test_file in $(TEST_FILES); do \

@@ -76,14 +76,23 @@ mkdir -p ~/.config/isabelle-iq && (umask 077; openssl rand -hex 32 > ~/.config/i
 ## The agent-host extension
 
 The `extension/` directory is one package for both hosts: the shared
-`skills/` tree, the I/Q MCP declaration (Claude Code reads `.mcp.json`, Codex
-CLI reads `codex/mcp.json`; both launch `bin/iq-bridge.sh`, the one place the
-extension resolves `ISABELLE_TOOLING_ROOT`), the Claude Code agent
+`skills/` tree, the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
+Codex CLI reads the direct server map in `codex/.mcp.json`; both launch
+`bin/iq-bridge.sh`, the one place the extension resolves
+`ISABELLE_TOOLING_ROOT`), the Claude Code agent
 `agents/ic2-prover.md`, and the Codex custom-agent profile
 `codex/ic2_prover.toml`. Both agent profiles are rendered from
 `agents/ic2-prover.instructions.md` by `scripts/render-agents.sh`; `make
 validate` fails when either is stale. Set `ISABELLE_TOOLING_ROOT` to the
 tooling clone in the environment the host starts from.
+
+The MCP files cannot currently be shared. Claude Code requires the root
+`mcpServers` wrapper and expands `CLAUDE_PLUGIN_ROOT`. Codex CLI 0.152.1
+requires the manifest's `mcpServers` path to name a direct server map and does
+not expand `PLUGIN_ROOT` or `CLAUDE_PLUGIN_ROOT` in a stdio `command`. Its
+declaration therefore forwards `ISABELLE_TOOLING_ROOT` with `env_vars` and
+uses a shell to expand that variable before executing the launcher from
+the tooling clone. No installed path or version is embedded in the package.
 
 Hosts install the extension from a Git URL of this repository, from the
 moving `release` branch or from an immutable `vX.Y.Z` tag. Both are release
@@ -254,6 +263,13 @@ file. It prints remediation commands and never runs them.
 ```bash
 make validate     # bash -n, ShellCheck, and the tests behind a mock isabelle
 ```
+
+Host fixtures (a fresh session driving the setup skill, a doctor run, an
+`isabelle build`) are run non-interactively: `claude -p ...` with the plugin
+installed or `--plugin-dir extension`, and `codex exec -C <checkout> ...`.
+Under Codex, pass `-c model_reasoning_effort=medium` for these runs; the
+user's default of `xhigh` turns a two-minute fixture into a ten-minute one and
+adds nothing to a smoke check. Run them in the background with a timeout.
 
 See [docs/architecture.md](docs/architecture.md) for the process layout, and
 the standing notes [docs/security.md](docs/security.md) and

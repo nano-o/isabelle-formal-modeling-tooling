@@ -27,11 +27,12 @@ line framing, failure handling, and keeping input and output rows aligned.
 
 Records are opaque to the runner. Each non-comment input line is handed to
 `Model_Dispatch.dispatch : string -> string`, and the output line is the
-input line, a tab, and the returned suffix. Blank and `#` lines are echoed.
-A `Model_Dispatch.Reject` is a malformed record; batch mode aborts on it
-without installing an output file, resident mode answers
-`#reject<TAB>LINE<TAB>MESSAGE` (and `#error…` for a crash) after printing
-`#ready`. The descriptor needs `export_name` (as `isabelle export -l` lists
+input line, a tab, and the returned suffix. Blank and `#` lines are echoed
+in batch mode; resident mode answers a blank line with `#`, because the
+ML_process wrapper drops empty output lines. A `Model_Dispatch.Reject` is a
+malformed record; batch mode aborts on it without installing an output file,
+resident mode answers `#reject<TAB>LINE<TAB>MESSAGE` (and `#error…` for a
+crash) after printing `#ready`. The descriptor needs `export_name` (as `isabelle export -l` lists
 it) and `model_dispatch` (relative to the formal root).
 
 **The export check**, `"$ISABELLE_TOOLING_ROOT/scripts/export-check.sh"`,
@@ -178,4 +179,4 @@ must have both sides produce.
    corpus. Comparator, structural checks, per-tag `OK` and `ERR` mutations.
 4. Widen tag by tag. Commit the golden file last.
 
-Skill revision marker: v0.6.0 — first release of isabelle-differential.
+Skill revision marker: v0.6.1 — resident-mode blank-line reply stated exactly.

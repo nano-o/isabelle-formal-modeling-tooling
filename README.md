@@ -255,6 +255,13 @@ file. It prints remediation commands and never runs them.
 make validate     # bash -n, ShellCheck, and the tests behind a mock isabelle
 ```
 
+Host fixtures (a fresh session driving the setup skill, a doctor run, an
+`isabelle build`) are run non-interactively: `claude -p ...` with the plugin
+installed or `--plugin-dir extension`, and `codex exec -C <checkout> ...`.
+Under Codex, pass `-c model_reasoning_effort=medium` for these runs; the
+user's default of `xhigh` turns a two-minute fixture into a ten-minute one and
+adds nothing to a smoke check. Run them in the background with a timeout.
+
 See [docs/architecture.md](docs/architecture.md) for the process layout, and
 the standing notes [docs/security.md](docs/security.md) and
 [docs/jai-agent-isolation.md](docs/jai-agent-isolation.md), which describe the

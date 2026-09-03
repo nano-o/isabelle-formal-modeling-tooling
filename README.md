@@ -76,7 +76,8 @@ mkdir -p ~/.config/isabelle-iq && (umask 077; openssl rand -hex 32 > ~/.config/i
 ## The agent-host extension
 
 The `extension/` directory is one package for both hosts: the shared
-`skills/` tree, the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
+`skills/` tree (`isabelle-setup` for binding a project, `isabelle-proving`
+for the two theory-editing workflows and the proof discipline), the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
 Codex CLI reads the direct server map in `codex/.mcp.json`; both launch
 `bin/iq-bridge.sh`, the one place the extension resolves
 `ISABELLE_TOOLING_ROOT`), the Claude Code agent

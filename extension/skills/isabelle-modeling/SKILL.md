@@ -58,9 +58,12 @@ yet confirmed)`, and say so in your report; do not skip the block.
   because its reading changes from `sint` to `uint`. Default annotation: the
   `― ‹C++: …›` comment on the definition plus a sentence in its `text` block.
 - **Unreachable defensive checks.** How checks the source can never reach
-  (a `default:` on an exhaustive switch, a null check on a reference) are
-  treated. Default: modelled as written, with a lemma that they are
-  unreachable if the fact is useful; never silently dropped.
+  (a `default:` on an exhaustive switch, a null check on a reference, a
+  range check that an earlier guard already implies) are treated. Default:
+  modelled as written, with a lemma that they are unreachable; never
+  silently dropped. Decide reachability by reading the arithmetic, not by
+  taking the user's or your first impression: the fixture's final
+  `INT64_MAX` guard looked live to everyone and is dead.
 - **Undefined behaviour.** Excluded, never modelled as a result: the source
   has no value there to correspond to. Default: state a definedness
   precondition per definition that has one (signed overflow, shift width,
@@ -84,8 +87,11 @@ either.
 source's overflow, truncation, and rounding, so every value it produces is
 the value the code produces. Concretely: `int64_t` and `uint64_t` are
 `64 word`, `int32_t` is `32 word`, `unsigned __int128` is `128 word`;
-signedness is a reading (`sint` or `uint`), not a type; widening is `ucast`
-or `scast` as the source's rule says; a mixed comparison follows the
+signedness is a reading (`sint` or `uint`), not a type; widening follows
+the source's conversion rule (in C, a signed source converts by value modulo
+the target width, which is `scast`; `ucast` is right for an unsigned source,
+and for a signed one only where a preceding check has established
+non-negativity, which the text block then says); a mixed comparison follows the
 source's promotion rule (`r2 <= INT64_MAX` between `uint64_t` and `int64_t`
 is unsigned in C++, so the model compares `uint r2`).
 
@@ -97,7 +103,10 @@ correspondence line by line:
   Helpers the source keeps separate stay separate; a wrapper that only turns
   a false return into an exception is still its own definition. Never fold
   several source functions into one definition, however much simpler the
-  result.
+  result. The fold also happens in the other direction: a helper that
+  returns a Boolean keeps a Boolean result, and the caller's line that turns
+  that Boolean into *its* status stays in the caller. A helper that returns
+  the caller's status has absorbed one of the caller's early exits.
 - **The same control flow.** Branches in source order; early exits as status
   returns through the result type and `do` notation, not restructured
   conditionals; a `switch` as a `case`; the source's temporaries as `let`
@@ -224,4 +233,4 @@ Then the reviewer checks the exports: every exported constant is a transport
 wrapper over a code-level definition, and the export check passes. Report
 per function, naming the deviation, not per file.
 
-Skill revision marker: v0.7.0 — first release of isabelle-modeling.
+Skill revision marker: v0.7.1 — helper Boolean stays Boolean; scast for signed widening; reachability by reading.

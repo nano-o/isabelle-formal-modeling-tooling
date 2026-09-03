@@ -151,4 +151,4 @@ component, "proved" for a tested claim, or "the code is correct" for "these
 properties hold of the model under these assumptions". Report a differential
 disagreement by naming both sides' values without asserting which erred.
 
-Skill revision marker: v0.7.0 — first release of isabelle-assurance.
+Skill revision marker: v0.7.1.

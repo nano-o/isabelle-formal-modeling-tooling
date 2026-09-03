@@ -1,0 +1,5 @@
+session Export_Fixture_Axiom = HOL +
+  options [document = false]
+  theories
+    Base
+    Fixture

@@ -1,0 +1,4 @@
+session Export_Fixture_Printing = HOL +
+  options [document = false]
+  theories
+    Fixture

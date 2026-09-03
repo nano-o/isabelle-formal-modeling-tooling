@@ -1,7 +1,7 @@
 {
   "name": "isabelle-formal-modeling",
-  "version": "0.5.0",
-  "description": "Isabelle formal-modeling workflow: setup skill, I/Q MCP bridge launched from the tooling clone named by ISABELLE_TOOLING_ROOT, and the ic2 proof-worker agent.",
+  "version": "0.6.0",
+  "description": "Isabelle formal-modeling workflow: setup, proving, and differential-testing skills, I/Q MCP bridge launched from the tooling clone named by ISABELLE_TOOLING_ROOT, and the ic2 proof-worker agent.",
   "author": {
     "name": "Giuliano Losa"
   },

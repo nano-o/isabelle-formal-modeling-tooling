@@ -83,6 +83,11 @@ cd <worktree>
 - Theory files are written in UTF-8 with Isabelle symbols as ASCII escapes
   (`\<open>...\<close>`, `\<Rightarrow>`); a raw Unicode glyph in a file is a
   malformed command to the batch prover.
+- When reporting Isabelle work to the user, render those escapes as the
+  corresponding Unicode mathematics whenever practical.  Show raw Isabelle
+  markup only when discussing source spelling or providing an exact snippet
+  to paste; this presentation rule does not change how theory files are
+  written.
 - REPL: `repl_connect` first. `repl_init` can import only theories in the
   daemon's initial heap (`Main` with a `HOL` heap; not `HOL-Library.Word`).
   For project or library theories, open the project theory with `open_file`
@@ -91,6 +96,9 @@ cd <worktree>
   need, and confirm with `repl_state`.
 - `repl_init_from_source` positions the REPL *after* the matched command; to
   see the goal a failing `by` faces, match the command before it.
+- Initializing from a theorem statement leaves the REPL in `proof (prove)`
+  mode.  Start a structured proof with `proof -` or `proof (...)` before a
+  `have`; a bare `have` in `prove` mode is an illegal proof command.
 - A failed `repl_step` leaves the state unchanged; do not `repl_back` after
   it. One step may contain several Isar commands, accepted or rejected as a
   unit.
@@ -100,6 +108,15 @@ cd <worktree>
   The theory file may still use `do` notation.
 - `repl_sledgehammer` returns only when every prover has finished or timed
   out; keep its timeout at 5 seconds.
+- For a bounded Nitpick experiment, bound both layers: set the REPL step
+  timeout with `repl_timeout` and give Nitpick its own shorter
+  `nitpick [timeout = N]`.  Nitpick can spend time interrupting or cleaning up
+  after its internal limit; a timeout is inconclusive, not evidence for the
+  conjecture.
+- `write_file` can finish the edited command range while dependent commands
+  later in the theory are still processing.  Before reporting the edit as
+  clean, wait for whole-document status and then inspect diagnostics and
+  `sorry` positions.
 
 ## Proof discipline
 
@@ -111,6 +128,10 @@ cd <worktree>
   run sledgehammer with a 5-second timeout, and write what it found. Plain
   `simp`, `auto`, `linarith`, `eval` without guessed arguments may be tried
   directly.
+- A fact just proved in the current development, or located explicitly with
+  `find_theorems`, is confirmed rather than guessed.  Apply a syntactically
+  matching fact directly; do not run sledgehammer as a ritual when fact
+  selection is already settled.
 - Shape the goal before sledgehammer: one equation or inequality over a few
   terms. Unfold with `simp only: c_def Let_def`, split cases, and hammer the
   leaves; a goal still containing the characterized constant or an `if`/`let`
@@ -127,6 +148,9 @@ cd <worktree>
 - Use `text ‹...›` blocks, not `(* ... *)`, for notes; in text, refer to terms
   with `@{term "..."}` and to facts with `@{thm [source] "..."}`; bare math
   symbols or underscored names outside antiquotations break the document.
+  A text block before a declaration cannot use `@{const f}` for the constant
+  it is about because `f` does not exist yet; use `@{text f}` there, and use
+  `@{const f}` only after the declaration.
 - Fix Isabelle warnings that take a one-line change; leave the rest.
 - Before finishing: `isabelle build` the session, and check that proof
   sketches still describe the proofs.
@@ -136,10 +160,15 @@ cd <worktree>
 - State a property over the code-level definitions or over a
   characterization already proved equal to them (`isabelle-modeling`); write
   the English sentence it stands for in a `text` block right before it.
-- Before any proof effort, run `quickcheck` and `nitpick` on the statement in
-  a REPL (word types are finite, so both are effective on them). A
-  counterexample means the property or its precondition is wrong; fix the
-  statement, never the model.
+- Before proof effort on a new user-facing property, run `quickcheck` and a
+  bounded `nitpick` experiment in a REPL.  A counterexample means the property
+  or its precondition is wrong; fix the statement, never the model.  Do not
+  repeat both tools mechanically for every routine supporting lemma.
+  Quickcheck is usually cheap; Nitpick is most useful on structurally small
+  finite problems.  Merely having 64- or 128-bit word types does not make its
+  search tractable, and refinement statements over unbounded integers are
+  often poor Nitpick targets.  Use the two timeout layers described above,
+  report an inconclusive timeout, and continue with proof development.
 - Prove on the simplest equal form: unfold the definition with `simp only:
   f_def Let_def`, split on the result type and the branches, discharge the
   arithmetic leaves with `sledgehammer`; a word-level goal usually needs the
@@ -154,6 +183,9 @@ cd <worktree>
 - Do not name a fact with a reserved keyword such as `prop` or `term`, or use
   the outer keyword `value` as a variable name.
 - Do not name a fact `sym`; it shadows HOL's theorem.
+- Do not use `quotient` as a bound term variable; Isabelle can parse it as
+  quotient syntax (shown as `(//)`) and report a misleading function-type
+  error.
 - Names introduced by `defines` must also occur in `fixes`, or Isabelle
   reports "Extra variables on rhs".
 - On a lemma with several `shows`, `[OF ..., of ...]` instantiates every

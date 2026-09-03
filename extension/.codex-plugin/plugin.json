@@ -7,5 +7,16 @@
   },
   "homepage": "https://github.com/nano-o/isabelle-formal-modeling-tooling",
   "skills": "./skills/",
-  "mcpServers": "./codex/.mcp.json"
+  "mcpServers": "./codex/.mcp.json",
+  "interface": {
+    "displayName": "Isabelle Formal Modeling",
+    "shortDescription": "Model code and prove properties with Isabelle/HOL",
+    "longDescription": "Set up Isabelle projects, model implementation behavior, develop proofs, differential-test exported models, and document the assurance argument.",
+    "developerName": "Giuliano Losa",
+    "category": "Development",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Help me model this implementation and prove its key properties in Isabelle/HOL."
+    ]
+  }
 }

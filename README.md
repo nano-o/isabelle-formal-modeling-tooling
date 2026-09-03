@@ -131,6 +131,42 @@ Codex CLI
   Remove with `codex plugin remove ...`, `codex plugin marketplace remove
   isabelle-formal-modeling-tooling`, and by deleting the profile.
 
+Local Codex development
+: The Git marketplace above is a release snapshot and cannot expose
+  uncommitted skill edits. For iteration, use a separate direct-local
+  marketplace. On a checkout below the home directory, the personal
+  marketplace at `~/.agents/plugins/marketplace.json` can be named
+  `isabelle-formal-modeling-dev` and point its plugin entry at this
+  checkout's `extension/` using a `./`-relative path from the home
+  directory. Keep the production marketplace configured, but install only
+  one copy of `isabelle-formal-modeling` at a time.
+
+  Before installing the development copy, remove the production installation
+  explicitly:
+
+  ```bash
+  codex plugin remove isabelle-formal-modeling@isabelle-formal-modeling-tooling
+  ```
+
+  Then use the built-in `plugin-creator` updater, which refuses Git
+  snapshots and mismatched paths before changing the manifest:
+
+  ```bash
+  PLUGIN_CREATOR="${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator"
+  python3 "$PLUGIN_CREATOR/scripts/update_local_plugin.py" extension \
+    --marketplace isabelle-formal-modeling-dev --preflight
+  python3 "$PLUGIN_CREATOR/scripts/update_local_plugin.py" extension \
+    --marketplace isabelle-formal-modeling-dev
+  ```
+
+  The updater verifies the cachebusted installed version and restores the
+  source manifest to its release version. Start a new thread only after that
+  verification. To return to production, remove
+  `isabelle-formal-modeling@isabelle-formal-modeling-dev` and reinstall it
+  from `isabelle-formal-modeling-tooling`. This route is Codex-only; Claude
+  Code continues to use `extension/.mcp.json` and its existing marketplace
+  commands.
+
 Immutable tag
 : A marketplace pinned with `#vX.Y.Z` (Claude Code) or `--ref vX.Y.Z` (Codex
   CLI) cannot advance: `marketplace update`/`upgrade` sees no change on an

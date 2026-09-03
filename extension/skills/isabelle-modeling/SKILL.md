@@ -120,7 +120,9 @@ correspondence line by line:
   language, function, file), and a `text` block before it explaining any
   place where the correspondence is not literal: an unassigned
   out-parameter, a same-width cast, a promoted comparison, a definedness
-  precondition.
+  precondition.  Because that block precedes the declaration, refer to the
+  not-yet-declared Isabelle name with `@{text f}`, not `@{const f}`; the
+  latter is valid only in text after the definition.
 - **Simplifications are lemmas, never definitions.** Unbounded integers, a
   fused helper, a closed form, an integer characterization: each is a lemma
   proved *about* the code-level definitions. Proofs may live entirely on the

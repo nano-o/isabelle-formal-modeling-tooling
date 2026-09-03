@@ -5,7 +5,7 @@
     {
       "name": "isabelle-formal-modeling",
       "source": { "source": "local", "path": "./extension" },
-      "policy": { "installation": "AVAILABLE" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
       "category": "Development"
     }
   ]

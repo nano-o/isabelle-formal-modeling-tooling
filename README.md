@@ -22,6 +22,10 @@ scripts/ic2.sh         project entry point: start/stop/name/wait/health + `isabe
 scripts/start-ic2.sh   native `ic2 server start` wrapper (base session, heap bound)
 scripts/stop-ic2.sh    native `ic2 server stop` wrapper
 scripts/build-ic2.sh   register the ic2 component and build its JAR
+scripts/new-project.sh create the descriptor and an empty session from templates/
+scripts/render-agents.sh  render the two host worker profiles from agents/
+scripts/release.sh     cut a release of the extension (release branch, tag, REVISION)
+extension/             the agent-host extension (skills, MCP declaration, worker profiles)
 scripts/doctor.sh      check the whole setup, print remediations, run nothing
 scripts/setup-ir-venv.sh      create the I/R Python environment (.venv/)
 scripts/install-iq-plugin.sh  build/install/stamp the I/Q jEdit plugin
@@ -68,6 +72,82 @@ own convention:
 ```bash
 mkdir -p ~/.config/isabelle-iq && (umask 077; openssl rand -hex 32 > ~/.config/isabelle-iq/auth-token)
 ```
+
+## The agent-host extension
+
+The `extension/` directory is one package for both hosts: the shared
+`skills/` tree, the I/Q MCP declaration (Claude Code reads `.mcp.json`, Codex
+CLI reads `codex/mcp.json`; both launch `bin/iq-bridge.sh`, the one place the
+extension resolves `ISABELLE_TOOLING_ROOT`), the Claude Code agent
+`agents/ic2-prover.md`, and the Codex custom-agent profile
+`codex/ic2_prover.toml`. Both agent profiles are rendered from
+`agents/ic2-prover.instructions.md` by `scripts/render-agents.sh`; `make
+validate` fails when either is stale. Set `ISABELLE_TOOLING_ROOT` to the
+tooling clone in the environment the host starts from.
+
+Hosts install the extension from a Git URL of this repository, from the
+moving `release` branch or from an immutable `vX.Y.Z` tag. Both are release
+commits (below), never `main`; a release commit carries `extension/REVISION`
+with the release tag, the source commit it was built from, and the SHA-256 of
+the Codex worker profile, and doctor compares that file with the tooling
+clone and the project descriptor.
+
+Claude Code
+: `claude plugin marketplace add <git-url>#release`, then
+  `claude plugin install isabelle-formal-modeling@isabelle-formal-modeling-tooling`.
+  Upgrade along the channel with `claude plugin marketplace update
+  isabelle-formal-modeling-tooling` followed by `claude plugin update
+  isabelle-formal-modeling@isabelle-formal-modeling-tooling`; the first
+  refreshes the catalog, the second installs the new version (a superseded
+  version stays in `~/.claude/plugins/cache/` for a while; doctor reads the
+  active one from `installed_plugins.json`). Remove with `claude plugin
+  uninstall ...` and `claude plugin marketplace remove
+  isabelle-formal-modeling-tooling`. The worker agent is part of the plugin.
+
+Codex CLI
+: `codex plugin marketplace add <git-url> --ref release`, then
+  `codex plugin add isabelle-formal-modeling@isabelle-formal-modeling-tooling`.
+  Upgrade with `codex plugin marketplace upgrade
+  isabelle-formal-modeling-tooling`; with codex-cli 0.152 this replaced the
+  installed plugin in `~/.codex/plugins/cache/` with the channel's new
+  version on its own, and a following `codex plugin add ...` is a harmless
+  confirmation. Codex plugins cannot bundle custom agents, so install the
+  worker profile yourself and re-run this after every upgrade (doctor
+  compares its hash with the extension's):
+  `install -m 0644 ~/.codex/plugins/cache/isabelle-formal-modeling-tooling/isabelle-formal-modeling/<version>/codex/ic2_prover.toml ~/.codex/agents/ic2_prover.toml`.
+  Remove with `codex plugin remove ...`, `codex plugin marketplace remove
+  isabelle-formal-modeling-tooling`, and by deleting the profile.
+
+Immutable tag
+: A marketplace pinned with `#vX.Y.Z` (Claude Code) or `--ref vX.Y.Z` (Codex
+  CLI) cannot advance: `marketplace update`/`upgrade` sees no change on an
+  immutable ref. To move, remove the plugin and the marketplace and add them
+  again at the new tag. Both hosts key the marketplace by the name in its
+  manifest, so two refs of this repository cannot be registered side by side.
+
+Home directory
+: Installing the extension writes only through the host's own mechanism:
+  Claude Code under `~/.claude/plugins/` (cache, marketplaces, registry
+  files); Codex CLI under `~/.codex/plugins/cache/`,
+  `~/.codex/.tmp/marketplaces/`, `[plugins.*]` and `[marketplaces.*]` entries
+  in `~/.codex/config.toml`, and the worker profile in `~/.codex/agents/`.
+  Everything else the workflow writes under the home directory is Isabelle's,
+  jEdit's, or I/Q's (see Prerequisites), or Isabelle's own state under
+  `ISABELLE_HOME_USER`.
+
+### Cutting a release
+
+From a clean clone on the source branch, with `X.Y.Z` as the `version` in
+both extension manifests:
+
+```bash
+scripts/release.sh vX.Y.Z --push
+```
+
+This builds a release commit on the `release` branch (the source tree at
+`HEAD` plus `extension/REVISION`), tags it `vX.Y.Z`, and pushes the source
+branch, `release`, and the tag. Do not pipe the script into `head`; it must
+run to completion.
 
 ## Binding a project: the descriptor
 
@@ -161,7 +241,10 @@ Checks, in order: the descriptor and its roots; Isabelle and its version; the
 AutoCorrode submodule against the recorded gitlink; a clean tooling clone and
 submodule (modified scripts execute while `HEAD` still matches, so a dirty
 clone fails unless `--allow-dirty`, which passes and marks the report); the
-descriptor's `tooling_revision` against the clone's `HEAD`; exactly one ic2
+descriptor's `tooling_revision` against the clone's source revision; each
+host's installed extension `REVISION` against that revision, and the
+installed Codex worker profile against the hash the extension recorded;
+exactly one ic2
 component, registered from this clone, with its JAR built; systemd user
 scopes; the I/Q plugin stamp and token; the I/R environment against the lock
 file. It prints remediation commands and never runs them.

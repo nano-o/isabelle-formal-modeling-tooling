@@ -58,6 +58,15 @@ SESSION="${PROJECT_CONF[ic2_base_session]}"
 SERVER_NAME="$(derive_server_name "$PROJECT_CHECKOUT_ROOT")"
 MAX_HEAP="${PROJECT_CONF[ic2_max_heap]:-}"
 
+# Best effort: when the repository has a coordination board (board.sh), leave
+# a server note on it so live servers are visible next to the agents that own
+# them. Never fails or delays the ic2 action; silent without a board.
+board_note() {
+  [[ "$DRY_RUN" == false ]] || return 0
+  "$SCRIPT_DIR/board.sh" --project-root "$PROJECT_CHECKOUT_ROOT" --if-board --as ic2 \
+    post --kind server "$*" >/dev/null 2>&1 || true
+}
+
 reject_fixed_options() {
   local option
   for option in "$@"; do
@@ -82,12 +91,14 @@ case "$action" in
     start_args=(--session-dir "$SESSION_DIR" --session "$SESSION" --name "$SERVER_NAME")
     [[ -z "$MAX_HEAP" ]] || start_args+=(--max-heap "$MAX_HEAP")
     [[ "$DRY_RUN" == false ]] || start_args+=(--dry-run)
+    board_note "ic2 server $SERVER_NAME starting for $PROJECT_CHECKOUT_ROOT"
     exec "$SCRIPT_DIR/start-ic2.sh" "${start_args[@]}" "$@"
     ;;
   stop)
     reject_fixed_options "$@"
     stop_args=(--name "$SERVER_NAME")
     [[ "$DRY_RUN" == false ]] || stop_args+=(--dry-run)
+    board_note "ic2 server $SERVER_NAME stopping for $PROJECT_CHECKOUT_ROOT"
     exec "$SCRIPT_DIR/stop-ic2.sh" "${stop_args[@]}" "$@"
     ;;
 esac

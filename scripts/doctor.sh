@@ -123,6 +123,35 @@ if [[ "$descriptor_ok" == true ]]; then
   fi
 fi
 
+# --- coordination board ---------------------------------------------------------------
+#
+# Optional: a repository gets a board on its first `board.sh hello`. When one
+# exists, report who is registered, stale claims, and whether the shared
+# pre-commit guard is installed from this clone. No board is not a finding.
+
+if [[ "$descriptor_ok" == true ]]; then
+  board_common="$(git -C "$PROJECT_CHECKOUT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  board_dir="${ISABELLE_BOARD_DIR:-${board_common:+$board_common/isabelle-tooling/board}}"
+  if [[ -n "$board_dir" && -d "$board_dir/posts" ]]; then
+    board_agents="$(find "$board_dir/agents" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | wc -l)"
+    board_claims="$("$TOOLING_ROOT/scripts/board.sh" --project-root "$PROJECT_CHECKOUT_ROOT" claims 2>/dev/null || true)"
+    board_claim_count="$(printf '%s\n' "$board_claims" | grep -c '  held by ' || true)"
+    board_stale_count="$(printf '%s\n' "$board_claims" | grep -c '\[stale\]' || true)"
+    ok "Coordination board $board_dir: $board_agents agent(s), $board_claim_count claim(s), $board_stale_count stale"
+    board_hook="$(git -C "$PROJECT_CHECKOUT_ROOT" rev-parse --path-format=absolute --git-path hooks 2>/dev/null)/pre-commit"
+    board_install="$TOOLING_ROOT/scripts/board.sh --project-root $PROJECT_CHECKOUT_ROOT install-hook"
+    if grep -Fq 'isabelle-tooling board guard' "$board_hook" 2>/dev/null; then
+      if grep -Fq "$TOOLING_ROOT/scripts/board.sh" "$board_hook"; then
+        ok "Board pre-commit guard installed: $board_hook"
+      else
+        problem "Board pre-commit guard at $board_hook calls another tooling clone; re-run: $board_install"
+      fi
+    else
+      note "No board pre-commit guard for this repository; install with: $board_install"
+    fi
+  fi
+fi
+
 # --- installed agent-host extensions ------------------------------------------------
 #
 # Each host caches installed plugins under its own directory. A released

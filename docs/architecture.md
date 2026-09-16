@@ -54,3 +54,14 @@ Every script derives the project from the committed descriptor at the
 checkout root, found by `--project-root` or by walking up from the current
 directory, and the tooling clone from its own location. See the README for
 the descriptor format and the naming rule.
+
+## Coordination
+
+`board.sh` keeps a repository's coordination board under its Git common
+directory (`<common dir>/isabelle-tooling/board`), the one directory every
+linked worktree shares without it being part of a working tree. Presence,
+posts and claims are plain files: a post is one file, a claim is a directory
+created atomically with `mkdir`. The `pre-commit` hook in the shared hooks
+directory enforces claims at commit time, `ic2.sh` posts server notes there,
+and the extension's Claude Code hooks inject the digest into a session. See
+[coordination-board.md](coordination-board.md).

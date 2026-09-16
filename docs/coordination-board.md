@@ -2,7 +2,9 @@
 
 Design and plan for `scripts/board.sh`, the `isabelle-coordination` skill,
 and the pieces around them. Written 2026-09-16 on branch
-`coordination-board`; the *Plan* section records what is done.
+`coordination-board`; the *Plan* section records what is done. Status:
+all six phases implemented on that branch, `make validate` passes, awaiting
+review against the checklist below.
 
 ## Problem
 
@@ -140,9 +142,14 @@ bypasses it; the skill asks agents to post why when they do.
 Claude Code: the extension declares `SessionStart` and `UserPromptSubmit`
 hooks running `bin/board-hook.sh`, which resolves the tooling clone from
 `ISABELLE_TOOLING_ROOT` like `bin/iq-bridge.sh` does and runs
-`board.sh digest --cursor session-<id> --mark`. Its output enters the
-session as context; it prints nothing when the repository has no board or
-nothing is new, and always exits 0 so it can never block a prompt.
+`board.sh digest --cursor session-<id> --mark`, with `--full` on
+`SessionStart` because a starting, resumed or compacted session has no
+memory of earlier posts. Its output enters the session as context; it
+prints nothing when the repository has no board or nothing is new, and
+always exits 0 so it can never block a prompt. The declaration lives in
+`hooks/board-hooks.json`, named from the manifest's `hooks` field rather
+than at the default `hooks/hooks.json`, so the file is registered exactly
+once whichever discovery rule the host applies.
 
 Codex CLI: no hook is assumed. The skill instructs agents to run `digest`
 at the start of a task, before editing a shared file, before a merge or a
@@ -164,20 +171,20 @@ milestones, copied over at handoff by whoever posts "ready to merge".
 
 ## Plan
 
-- [ ] P1 `scripts/board.sh`: resolution, identity, `hello`, `bye`, `who`,
+- [x] P1 `scripts/board.sh`: resolution, identity, `hello`, `bye`, `who`,
   `post`, `show`, `digest`, `claim`, `release`, `claims`, `path`; tests in
   `tests/board_test.sh` on a temporary repository with a linked worktree.
-- [ ] P2 `guard`, `install-hook`, `uninstall-hook`; tests that a real
+- [x] P2 `guard`, `install-hook`, `uninstall-hook`; tests that a real
   `git commit` is refused for a foreign claim, allowed for the owner and for
   stale claims, and that identity inference by worktree works.
-- [ ] P3 `extension/skills/isabelle-coordination/SKILL.md`; board section in
+- [x] P3 `extension/skills/isabelle-coordination/SKILL.md`; board section in
   `agents/ic2-prover.instructions.md`, re-rendered; cross-reference from
   `isabelle-proving`'s delegation section.
-- [ ] P4 Claude Code hooks: `extension/hooks/hooks.json`,
+- [x] P4 Claude Code hooks: `extension/hooks/board-hooks.json`,
   `extension/bin/board-hook.sh`, manifest entry, JSON validated by
   `make validate`.
-- [ ] P5 `ic2.sh` server notes; `doctor.sh` board section.
-- [ ] P6 README (tree listing, a Coordination section), architecture note,
+- [x] P5 `ic2.sh` server notes; `doctor.sh` board section.
+- [x] P6 README (tree listing, a Coordination section), architecture note,
   this document's status.
 
 ## Review checklist

@@ -25,8 +25,9 @@ scripts/build-ic2.sh   register the ic2 component and build its JAR
 scripts/new-project.sh create the descriptor and an empty session from templates/
 scripts/render-agents.sh  render the two host worker profiles from agents/
 scripts/release.sh     cut a release of the extension (release branch, tag, REVISION)
-extension/             the agent-host extension (skills, MCP declaration, worker profiles)
+extension/             the agent-host extension (skills, MCP declaration, worker profiles, board hooks)
 scripts/doctor.sh      check the whole setup, print remediations, run nothing
+scripts/board.sh       coordination board for concurrent agents: presence, posts, claims, pre-commit guard
 scripts/setup-ir-venv.sh      create the I/R Python environment (.venv/)
 scripts/install-iq-plugin.sh  build/install/stamp the I/Q jEdit plugin
 scripts/launch_jedit.sh        launch host jEdit with I/Q and I/R
@@ -80,7 +81,7 @@ The `extension/` directory is one package for both hosts: the shared
 for the two theory-editing workflows and the proof discipline,
 `isabelle-modeling` for the code-level model standard and its conventions
 interview, `isabelle-differential` for testing an exported model against its
-implementation, `isabelle-assurance` for stating what the work establishes), the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
+implementation, `isabelle-assurance` for stating what the work establishes, `isabelle-coordination` for several agents sharing one repository through the board), the Claude Code hooks (`hooks/board-hooks.json`, running `bin/board-hook.sh` at session start and before each prompt to inject what is new on the board), the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
 Codex CLI reads the direct server map in `codex/.mcp.json`; both launch
 `bin/iq-bridge.sh`, the one place the extension resolves
 `ISABELLE_TOOLING_ROOT`), the Claude Code agent
@@ -280,6 +281,37 @@ The launcher accepts `--read-root DIR` for directories I/Q may read outside
 the project. Agents reach the live PIDE document through the I/Q MCP bridge,
 `AutoCorrode/iq/iq_bridge.py`, launched from this clone.
 
+## Several agents on one repository: the board
+
+When more than one agent works on a repository at once, in the main checkout
+and in linked worktrees, on Claude Code or Codex CLI, they coordinate through
+the board: plain files under the repository's Git common directory
+(`<common dir>/isabelle-tooling/board`), the one place every worktree shares
+without it being in a working tree. `scripts/board.sh` is the only interface;
+the `isabelle-coordination` skill says when agents use it.
+
+```bash
+board.sh --as tx-layer hello --task "transaction layer theory"      # presence: worktree, branch, task
+board.sh --as tx-layer claim --reason "rewriting milestones" PLAN.md refs/heads/main
+board.sh --as tx-layer post --kind handoff --re PLAN.md "branch formal-tx-layer at 419672d ready to merge"
+board.sh show                                 # agents, claims, recent posts, for humans too
+board.sh digest --cursor tx-layer --mark      # only what is new since last time; silent if nothing
+board.sh --as tx-layer release --all
+board.sh --as tx-layer bye "done"
+board.sh install-hook                         # once per repository: the shared pre-commit guard
+```
+
+Claims are leases on paths (a directory covers what is below it), refs, the
+token `jedit` for the I/Q session, or `path#passage` for one part of a file
+(advisory). The `pre-commit` hook that `install-hook` writes into the shared
+hooks directory refuses a commit touching a path, or on a branch, that
+another agent holds an active claim on; a claim is stale, and no longer
+blocks, after `ISABELLE_BOARD_STALE_MINUTES` (default 180) without board
+activity by its owner. `ic2.sh start` and `stop` post server notes when a
+board exists. The Claude Code hooks in the extension inject the digest into
+a session; Codex agents run it by instruction. Design, plan and review
+checklist: [docs/coordination-board.md](docs/coordination-board.md).
+
 ## Differential testing: the model runner and the export check
 
 Differential testing is a method the `isabelle-differential` skill teaches,
@@ -350,7 +382,9 @@ installed Codex worker profile against the hash the extension recorded;
 exactly one ic2
 component, registered from this clone, with its JAR built; systemd user
 scopes; the I/Q plugin stamp and token; the I/R environment against the lock
-file. It prints remediation commands and never runs them.
+file; and, when the repository has a coordination board, its agents, stale
+claims and the shared pre-commit guard. It prints remediation commands and
+never runs them.
 
 ## Validation
 

@@ -78,6 +78,17 @@ explicitly authorizes broader changes. You may add local helper lemmas when
 they preserve the requested statement. Commit only when the task explicitly
 authorizes it.
 
+## The coordination board
+
+When the repository has a coordination board (from the assigned worktree,
+`"$ISABELLE_TOOLING_ROOT/scripts/board.sh" who` prints agents rather than
+"no board yet"), use it as the `isabelle-coordination` skill describes, with
+the worktree's name as your handle: `hello --task` naming the proof target
+when you start; `claim` the theories you edit and your branch
+(`refs/heads/<branch>`); `post --kind handoff` with worktree, branch, commit
+and validation results before returning; then `bye`. Do not create a board
+where none exists; that is the coordinator's decision.
+
 ## Before returning
 
 1. Fully check every changed theory and report the exact commands and results.

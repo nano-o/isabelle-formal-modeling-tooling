@@ -207,6 +207,9 @@ delegated worktree concurrently, reviews the diff and validation report on
 return, verifies the worker stopped its server, and reports worktree path,
 branch, and commit. It never merges, cherry-picks, or removes the worktree or
 branch unless asked. Worktrees no longer need a submodule populated: the
-tooling and AutoCorrode live in the tooling clone.
+tooling and AutoCorrode live in the tooling clone. When the repository has a
+coordination board (`isabelle-coordination` skill), the coordinator
+registers with `hello`, claims the branch it hands over, and expects the
+worker's handoff as a `handoff` post as well as in its final message.
 
 Skill revision marker: v0.7.1.

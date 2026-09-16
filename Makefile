@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-SCRIPT_FILES := $(wildcard scripts/*.sh) extension/bin/iq-bridge.sh
+SCRIPT_FILES := $(wildcard scripts/*.sh) extension/bin/iq-bridge.sh extension/bin/board-hook.sh
 TEST_FILES := \
 	tests/common_test.sh \
 	tests/descriptor_test.sh \
@@ -8,7 +8,8 @@ TEST_FILES := \
 	tests/new_project_test.sh \
 	tests/start_ic2_test.sh \
 	tests/model_runner_test.sh \
-	tests/export_check_test.sh
+	tests/export_check_test.sh \
+	tests/board_test.sh
 ISABELLE_TEST_FILES := \
 	tests/isabelle/export_check_test.sh \
 	tests/isabelle/model_runner_test.sh
@@ -29,7 +30,7 @@ help:
 
 validate:
 	./scripts/render-agents.sh --check
-	python3 -c 'import json,sys; [json.load(open(f)) for f in sys.argv[1:]]' .claude-plugin/marketplace.json extension/.claude-plugin/plugin.json extension/.mcp.json extension/.codex-plugin/plugin.json extension/codex/.mcp.json .agents/plugins/marketplace.json
+	python3 -c 'import json,sys; [json.load(open(f)) for f in sys.argv[1:]]' .claude-plugin/marketplace.json extension/.claude-plugin/plugin.json extension/.mcp.json extension/hooks/board-hooks.json extension/.codex-plugin/plugin.json extension/codex/.mcp.json .agents/plugins/marketplace.json
 	@for test_file in $(PYTHON_TEST_FILES); do \
 		PYTHONDONTWRITEBYTECODE=1 python3 "$$test_file" || exit 1; \
 	done

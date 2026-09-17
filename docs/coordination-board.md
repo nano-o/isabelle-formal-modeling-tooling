@@ -1,213 +1,255 @@
 # Coordination board for concurrent agents
 
-Design and plan for `scripts/board.sh`, the `isabelle-coordination` skill,
-and the pieces around them. Written 2026-09-16 on branch
-`coordination-board`; the *Plan* section records what is done. Status:
-all six phases implemented on that branch, `make validate` passes, awaiting
-review against the checklist below.
+Implemented on `coordination-board`, including the September 2026 review
+fixes. `scripts/board.sh` is the public CLI; `scripts/board.py` implements it
+with Python 3.9+ standard-library facilities and Git. No daemon, external
+Python packages, Isabelle process, or files under `$HOME` are needed.
 
-## Problem
+The board lets agents in a repository's main and linked worktrees announce
+presence, claim resources, and post handoffs. Project decisions and milestones
+still belong in the project's plan. The board is local coordination, not a
+cross-machine service or an access-control boundary against uncooperative
+programs.
 
-A project using this tooling had several agents, Claude Code and Codex CLI
-sessions, working at once on one repository: one in the main checkout that
-jEdit owns (the I/Q workflow), others in linked worktrees with their own ic2
-servers. In one afternoon:
+## Location and format
 
-- One agent's commit of a shared planning file swept in another agent's
-  uncommitted edits to the same file, because both edit the same working
-  tree and neither knew the other was in it. The history had to be split
-  afterwards.
-- A branch moved under an agent in the middle of a history rewrite. Only a
-  guarded `update-ref` caught it.
-- Nobody could see which worktrees were active, which ic2 servers were
-  live, who was editing theories through I/Q, or which branch was about to
-  be merged.
-- The planning file served as the de facto message board: agents read each
-  other's handoffs there and re-planned. It is a decision log, not a live
-  board, and it is the file that collided.
+The default location is `<git common dir>/isabelle-tooling/board`, shared by
+all linked worktrees and outside their tracked files. `ISABELLE_BOARD_DIR`
+overrides it. Run inside a worktree or pass `--project-root DIR`. Without a
+Git repository, an explicit board directory permits standalone use; Git
+hooks still require a repository.
 
-The skills already state the rule ("agree who owns a passage before editing
-it"; "the coordinator does not edit the delegated worktree concurrently")
-but give no mechanism for reaching or recording the agreement.
+Format 2 contains:
 
-## Goals and non-goals
+- `.lock`: a stable inode locked with kernel `flock`. Never unlink or replace
+  it while clients might be running. Kernel ownership disappears on process
+  death; the remaining inode is harmless, not a stale held lock.
+- `format`: the activated format marker. A missing snapshot after activation
+  is an error, not a legacy board eligible for migration.
+- `state.json`: the format version, complete typed claim list, and last
+  reserved post sequence number. Each update writes and fsyncs a temporary
+  file, replaces the snapshot, then fsyncs its directory.
+- `agents/<handle>`: presence records; modification times are activity times.
+- `messages/<20-digit sequence>.md`: immutable published posts, with
+  `time`, `from`, `kind`, and `re` headers followed by a blank line and body.
+- `cursors-v2/<name>`: the greatest successfully emitted post number.
+- `posts/`: the legacy location, retained as a board marker and migration
+  archive. Migrated `claims/` and `cursors/` also remain for inspection.
 
-Goals:
+Authoritative reads, ownership checks, presence renewal, and mutations use
+one lock. Readers see a complete claim snapshot. Input is collected before
+locking; output is delivered after unlocking. No external Git mutation or
+foreign hook runs while the board lock is held. Malformed authoritative
+state fails closed with an error; it is never interpreted as an empty board.
+Repair corrupt state from a known backup with clients stopped. Hidden
+unpublished temporary files left by killed processes are ignored; remove
+those only during stopped-client maintenance if desired.
 
-- One place, shared by every worktree of a repository, where agents post
-  presence, claims, handoffs and notes, and where a human can read them.
-- Claims on files, refs and the jEdit worktree that a `pre-commit` hook
-  enforces, so the sweep above cannot happen silently again.
-- Host neutrality: a shell script and files; Claude Code and Codex agents
-  use it the same way, by instruction from a shared skill. Host-specific
-  delivery (Claude Code hooks) is an add-on, never the only path.
-- No daemon, no lock files that survive a crash, nothing under `$HOME`.
+## Identity and presence
 
-Non-goals:
+Writing actions use `--as HANDLE` or `ISABELLE_BOARD_AGENT`. Handles match
+`[a-z0-9][a-z0-9._-]{0,63}`; examples are `main` and `tx-layer`. A handle
+belongs to one session. Do not borrow another session's identity.
 
-- Real-time messaging. Agents read the board at defined moments (start,
-  before editing a shared file, before moving a ref, before merging, on
-  handoff), plus whatever their host can push.
-- Replacing the project's decision log. The board is ephemeral
-  coordination; decisions still go to the project's plan file.
-- Cross-machine use. The board lives in the local Git common directory. A
-  Git-branch backed variant could follow if agents ever run remotely.
+`hello --task TEXT` records worktree, branch, task and start time. `claim`
+also registers minimal presence if necessary. Every valid board action
+carrying an explicit handle renews existing presence, including `path`,
+`guard`, `who`, `claims`, and checks rejected for an ownership conflict.
+Argument-validation failures do not renew. `post` alone does not register
+presence (the system `ic2` poster needs none). Hook installation/removal and
+migration are maintenance actions, not heartbeats. `bye` releases all owned
+claims and removes presence; later reads do not recreate it.
 
-## Design
+Anonymous observations do not renew anyone. Guards, including Git hooks,
+infer identity only when exactly one **active** agent names the current
+worktree, and renew that agent. They never infer a stale owner. Ambiguous or
+absent identity treats every active claim as foreign. In a shared worktree,
+run Git as `ISABELLE_BOARD_AGENT=<your-handle> git ...`.
 
-### Location
+A claim is stale when its owner's presence is absent or older than
+`ISABELLE_BOARD_STALE_MINUTES` (default 180). Stale claims remain visible,
+but guards warn and allow the operation. Use occasional board activity to
+retain leases during long jobs; a proof process alone is not a heartbeat.
 
-The board directory is `<git common dir>/isabelle-tooling/board`. The Git
-common directory (`git rev-parse --git-common-dir`) is the same for the main
-checkout and every linked worktree, is not part of any working tree, needs
-no ignore rule, and survives worktree removal. An agent in a worktree reaches
-it without leaving the worktree. `ISABELLE_BOARD_DIR` overrides the location
-(tests; unusual layouts). Outside a Git repository the script fails and names
-the variable.
+## Resources and atomic ownership
 
-Resources that are paths are recorded relative to the worktree root, so the
-same claim means the same file in every worktree.
+Paths resolve lexically relative to the invocation directory, or to
+`--project-root` when supplied, whether they exist or not. They are stored
+relative to the worktree root, so they refer to the same tracked name across
+worktrees. Examples:
 
-### Identity
+- From the root, `PLAN.md` claims that file; from `formal/`, `New.thy` claims
+  `formal/New.thy` even before creation.
+- An existing directory, or an explicit trailing slash such as `future/`,
+  covers its descendants. `.` from the root claims the whole worktree;
+  `.` from a nested directory claims that subtree. Absolute paths are accepted
+  within the worktree. Escaping it is an error.
+- `refs/heads/main` claims a ref; normalized ref spelling is used.
+- `jedit` and `token:NAME` claim tokens. `path:jedit` explicitly means a file
+  named `jedit`; `path:refs/heads/main` means a file, not a ref.
+- `path#fragment` is an advisory passage. It is displayed but does not block
+  acquisition or guards, even when another claim covers the whole file.
 
-Every writing action carries a handle: `--as HANDLE`, or the environment
-variable `ISABELLE_BOARD_AGENT`. Handles are short lowercase names
-(`^[a-z0-9][a-z0-9._-]*$`), by convention the worktree or the topic:
-`main`, `tx-layer`, `env-repair`. Read-only actions need no handle.
+Symlink leaves are claimed as Git's symlink paths, not as their targets.
+Traversing a symlink directory is rejected because Git does not track those
+child paths. `#` is reserved for fragments; resource names containing newlines
+or carriage returns are rejected. Paths, refs and tokens have distinct types.
 
-The `pre-commit` guard has no handle argument. It uses
-`ISABELLE_BOARD_AGENT` when set; otherwise it infers the committer as the one
-active agent whose presence names the current worktree. When two agents
-share a worktree the inference is ambiguous and every active claim counts as
-foreign, so agents sharing a worktree pass the variable on their commits.
+`claim --reason TEXT RESOURCE...` checks every overlap and publishes the
+whole batch under the same lock. A foreign active directory claim conflicts
+with a child file claim and vice versa. Incompatible concurrent claimants
+have one winner; a failed batch acquires none of its resources. Reclaiming
+an exact owned resource updates its reason.
 
-### Presence
+A normal takeover may displace stale claims. `--force` may displace active
+ones and still requires a reason; skill instructions reserve this for human
+authorization. All displaced overlapping predecessors are retired, including
+ancestor directories, so a later heartbeat cannot revive them. The takeover
+post records displaced owners and the reason. State publication precedes its
+audit post; interruption can leave a valid claim without that notification.
 
-`hello --task TEXT` writes `agents/<handle>` with the worktree, branch, task
-and start time. Every later action by that handle refreshes the file's
-modification time, which is the agent's last activity. `bye` releases the
-agent's claims and removes the file. `who` lists agents with their last
-activity.
+`release RESOURCE...` uses the same normalization and ownership checks,
+including a directory's exact path after it has been deleted. An old owner's
+release cannot remove a successor's claim. `release --all` and `bye` release
+only that handle's claims. Explicit release batches fail before changing any
+claim if a selected resource belongs to someone else.
 
-### Posts
+## Post ordering and delivery
 
-One file per post under `posts/`, named
-`<UTC time>-<handle>-<random>.md`, written to a temporary name and moved
-into place. No locking, no conflicts, and directory order is time order.
-A post is a few `key=value` header lines (`time`, `from`, `kind`, `re`), a
-blank line, and the body. Kinds: `note` (default), `handoff`, `request`,
-`done`, `server`, plus the automatic `hello`, `bye`, `claim`, `release`.
-`show` renders the board; `digest` prints only what is new since a named
-cursor and stays silent when nothing is new, which is what a host hook
-needs.
+`post [--kind KIND] [--re RESOURCE] MESSAGE...` publishes a note; `post -`
+reads stdin. Sequence reservation and final publication occur under the same
+lock. The sequence is persisted before publication, so a killed publisher
+may leave a gap but cannot reuse a number or publish behind a later post.
+Timestamps are display metadata, not ordering keys.
 
-### Claims
+`show` displays the most recent 20 posts by default (`--last N` or `--all`).
+It never acknowledges anything. `digest --cursor NAME` captures all unread
+posts in one snapshot; a first read and `--full` include **all** published
+posts. There is no implicit ten-post truncation. `--mark` updates the cursor
+only after the complete output has been written and flushed successfully.
+It acknowledges the last post in that snapshot, never a newly arriving post.
+Concurrent updates take the maximum cursor, so a delayed reader cannot move
+it backwards. Interrupted or failed delivery can repeat messages and does
+not acknowledge an omitted batch. Successful delivery means the output stream
+accepted the bytes, not that a human or model read them.
 
-`claim RESOURCE... --reason TEXT` records a lease under
-`claims/<sanitized resource>-<8 hex of sha256>/` as `resource`, `owner`,
-`reason` and `since`. The directory is created with `mkdir`, which is atomic,
-so two agents cannot both win. A resource is:
+A repository without a board: `guard` and `digest` are silent successes;
+`who`, `claims` and `show` report “no board yet”; `path` reports its location.
+`hello`, `post` and `claim` initialize it. `--if-board` suppresses creation,
+which lets `ic2.sh start`/`stop` post server notes only when a board exists.
 
-- a path relative to the worktree root (`PLAN.md`, `formal/`); an existing
-  directory is recorded with a trailing slash and covers everything below it;
-- a ref (`refs/heads/main`), meaning "I am about to move or rewrite it";
-- a token such as `jedit` for the I/Q editing session, or `path#fragment`
-  for a passage of a file. Fragment claims are advisory: shown, not
-  enforced, so two agents can hold different passages of one theory and
-  both commit.
+Claude Code's `SessionStart` and `UserPromptSubmit` hooks call
+`extension/bin/board-hook.sh`, which uses a session cursor and `--mark`;
+`SessionStart` adds `--full` for a fresh or compacted context. The host wrapper
+exits successfully even when the board reports an error. Its declaration is
+`extension/hooks/board-hooks.json`, explicitly named by the manifest.
+Codex agents read at task start, before shared edits/ref moves, and on handoff.
 
-A claim is *stale* when its owner has shown no board activity for
-`ISABELLE_BOARD_STALE_MINUTES` (default 180) or the owner's presence is
-gone. Stale claims are shown as such, do not block, and can be taken over;
-`claim --force` takes over an active claim and posts the takeover with its
-reason. `release RESOURCE...` or `release --all` ends a lease; the guard
-never releases anything on its own.
+## Git enforcement and its limits
 
-### Guard and pre-commit hook
+`install-hook` installs two shared hooks using the tooling clone's absolute
+`board.sh` path:
 
-`guard --staged` lists the staged paths (old and new names, no rename
-detection) and the current branch ref, and fails when any of them is
-covered by an active claim of another agent, naming the owner, the reason
-and the time. Explicit paths can be checked too (`guard PATH...`) before an
-edit. `install-hook` writes a `pre-commit` hook into the repository's hooks
-directory, which every worktree shares, calling `board.sh guard --staged`
-by the tooling clone's absolute path. An existing foreign hook is kept and
-chained with `--force`, which renames it to `pre-commit.pre-board`. The hook
-is silent and passes when the repository has no board yet, so installing it
-in a repository nobody coordinates on costs nothing. `git commit --no-verify`
-bypasses it; the skill asks agents to post why when they do.
+- `pre-commit`: `guard --staged` checks all staged names (including both sides
+  of a rename) and the current branch.
+- `reference-transaction`: reads the full input and checks every reported
+  shared ref in the `prepared` phase. This covers ordinary fast-forward
+  merges, resets, rebases, direct `update-ref`, branch creation/deletion, and
+  multiple-ref transactions. The same owner, inference and staleness rules
+  apply. Per-worktree `HEAD` is not a shared branch claim.
 
-### Digest and host delivery
+Existing foreign hooks require `install-hook --force`, are retained as
+`<hook>.pre-board`, and run first with their arguments, environment and
+original stdin. The ref hook independently replays the same input to both
+consumers; a foreign failure is preserved. Reinstallation preserves the
+backups; `uninstall-hook` restores them. Both hooks are preflighted before
+installation changes either one. Custom `core.hooksPath` is respected; a
+shared repository hooks path is needed for all worktrees to use the hooks.
+`doctor.sh` checks board readability/version and both executable hook paths.
 
-Claude Code: the extension declares `SessionStart` and `UserPromptSubmit`
-hooks running `bin/board-hook.sh`, which resolves the tooling clone from
-`ISABELLE_TOOLING_ROOT` like `bin/iq-bridge.sh` does and runs
-`board.sh digest --cursor session-<id> --mark`, with `--full` on
-`SessionStart` because a starting, resumed or compacted session has no
-memory of earlier posts. Its output enters the session as context; it
-prints nothing when the repository has no board or nothing is new, and
-always exits 0 so it can never block a prompt. The declaration lives in
-`hooks/board-hooks.json`, named from the manifest's `hooks` field rather
-than at the default `hooks/hooks.json`, so the file is registered exactly
-once whichever discovery rule the host applies.
+These are checks at particular boundaries, not locks spanning the whole Git
+operation. **A rejected ref update may already have changed the index or
+working tree.** Inspect and coordinate recovery; never automatically reset,
+clean or discard changes in response. Editing and the `jedit` token require
+explicit pre-operation `guard` calls. File claims alone do not prevent a
+fast-forward merge: guard affected paths and claim/guard the destination ref.
+Fragments are always advisory.
 
-Codex CLI: no hook is assumed. The skill instructs agents to run `digest`
-at the start of a task, before editing a shared file, before a merge or a
-ref move, and before returning; the Git hook is host-neutral.
+On the tested Git 2.43 files backend, branch rename reports the source deletion
+but bypasses the destination ref transaction. Source claims block renaming;
+destination claims alone do not. Explicitly guard both source and destination
+before `git branch -m/-M`. Other ref backends or Git versions may expose
+different events; the tests exercise the observed boundary. Symbolic-ref
+changes are not generally guarded by Git 2.43 either. Retain expected-old-value
+checks for direct ref rewrites. `git commit --no-verify` bypasses only the
+commit hook, not the ref hook. Deliberately disabling hooks bypasses protection
+and needs explicit authorization and an explanatory post.
 
-### ic2 and doctor
+Reference: [Git reference-transaction hook documentation](https://git-scm.com/docs/githooks#_reference_transaction).
 
-`ic2.sh start` and `stop` post a `server` note from the system handle `ic2`
-when the repository already has a board, so live servers are visible next
-to the agents that own them. Nothing is posted when there is no board.
-`doctor.sh` reports the board when one exists: agents, stale claims, and
-whether the shared hook is installed and points at this clone.
+## Delegation
 
-### What goes where
+The coordinator registers, creates the branch and worktree, and releases any
+setup claim before delegation. The worker registers with its own handle and
+claims its branch and files. It commits within its authority, posts a handoff
+with branch, commit and validation results, then releases claims and says
+`bye`. It also returns a complete final message. The coordinator reviews the
+handoff and, only for an authorized integration, claims the destination
+branch and guards the affected resources. Normal delegation needs no forced
+takeover or identity sharing.
 
-Board: who is active where, what they hold, what is ready for whom, what
-they need from others, when they leave. Project plan file: decisions and
-milestones, copied over at handoff by whoever posts "ready to merge".
+## Migration and rollout
 
-## Plan
+Do this only when intentionally upgrading a repository's live board:
 
-- [x] P1 `scripts/board.sh`: resolution, identity, `hello`, `bye`, `who`,
-  `post`, `show`, `digest`, `claim`, `release`, `claims`, `path`; tests in
-  `tests/board_test.sh` on a temporary repository with a linked worktree.
-- [x] P2 `guard`, `install-hook`, `uninstall-hook`; tests that a real
-  `git commit` is refused for a foreign claim, allowed for the owner and for
-  stale claims, and that identity inference by worktree works.
-- [x] P3 `extension/skills/isabelle-coordination/SKILL.md`; board section in
-  `agents/ic2-prover.instructions.md`, re-rendered; cross-reference from
-  `isabelle-proving`'s delegation section.
-- [x] P4 Claude Code hooks: `extension/hooks/board-hooks.json`,
-  `extension/bin/board-hook.sh`, manifest entry, JSON validated by
-  `make validate`.
-- [x] P5 `ic2.sh` server notes; `doctor.sh` board section.
-- [x] P6 README (tree listing, a Coordination section), architecture note,
-  this document's status.
+1. Stop all old board writers: agent sessions, digest hooks, and ic2 commands
+   that post server notes. Old clients do not understand format versions and
+   **must not run concurrently** with new clients. Back up the board while
+   stopped; no automatic migration happens on a normal command.
+2. Update all tooling paths, `ISABELLE_TOOLING_ROOT` settings, and installed
+   host extensions to the new implementation. From the desired worktree run
+   `board.sh migrate --writers-stopped`. This flag confirms the operator has
+   stopped old clients; the tool cannot detect them reliably.
+3. Migration preserves valid legacy ownership/presence and copies every
+   published legacy post, in legacy filename order, into numbered messages.
+   Legacy cursors are retained but ignored: all posts replay conservatively,
+   since an old cursor might have skipped messages. Incomplete legacy claim
+   records are retired and individually reported, with originals retained
+   for inspection. The migration report is retained in `state.json`.
+   Historical overlapping claims are preserved for owners to resolve.
+4. Migration activates with one final `state.json` replacement. If interrupted
+   before activation, repeat it with old writers still stopped. If already
+   activated, rerunning reports the existing state without resetting cursors
+   or duplicating posts. A corrupt format-2 snapshot requires repair, not
+   legacy migration.
+5. Run `show --all`, resolve reported incomplete/overlapping legacy claims,
+   and reinstall with `install-hook` (or `--force` when chaining foreign hooks).
+   Check both paths with doctor, then resume only new clients. Do not restart
+   old code against the upgraded board or attempt an in-place downgrade.
 
-## Review checklist
+Development and validation use disposable repositories and never migrate a
+user's live board.
 
-- Two agents claiming the same resource at once: exactly one wins
-  (`mkdir`).
-- The guard blocks a foreign active claim, passes the owner, passes a stale
-  claim with a warning, and blocks when identity is ambiguous and a claim
-  matches.
-- Prefix claims (`formal/`) cover nested paths; fragment claims never block.
-- A repository without a board: every read-only action and the hook are
-  silent successes; `post`, `claim` and `hello` create the board.
-- Nothing is written under `$HOME`; nothing is written into a working tree.
-- ShellCheck clean; `make validate` passes; rendered agent profiles current.
-- The skill tells a Codex agent everything it needs without hooks.
+## Validation checklist
 
-## Open questions
+`make validate` runs the original CLI suite and
+`tests/board_regression_test.py`, plus shell lint, manifests and generated
+profile checks. The regression suite uses pipes and intercepted IO boundaries
+for deterministic scheduling, real process termination for crash recovery,
+and isolated Git/home configuration. It checks:
 
-- Should `ic2.sh` also refuse `start` when another agent's presence names
-  the same worktree? Left out: one server per worktree is already enforced
-  by the server name.
-- Should `digest` be injected on every prompt or only at session start?
-  Both are declared; the per-prompt hook is silent unless something is new,
-  so the cost is one process per prompt.
-- A `PreToolUse` hook on `git commit` would duplicate the Git hook with less
-  precision; not added.
+- One winner for initial, stale, and directory/file concurrent acquisition;
+  failed batches acquire nothing; killed writers publish no partial claims.
+- Stale ancestor retirement, successor-safe release, presence renewal and
+  invalid/anonymous/inferred identity behavior.
+- Nested and nonexistent paths, roots, absolute paths, directory deletion,
+  escapes, symlinks, tokens and advisory fragments.
+- Delayed/killed publishers, sequence gaps, arrivals during output, concurrent
+  readers, failed and interrupted delivery, and full first-read replay.
+- Real owner/foreign merge, reset, rebase, update-ref, branch creation/deletion
+  and multi-ref transactions in main and linked worktrees; rename limitations,
+  unrelated refs, absent boards, and the `--no-verify` boundary.
+- Hook chaining with stdin consumers, foreign exit status, reinstall/restore;
+  worker commit and coordinator integration under separate handles.
+- Legacy ownership/post retention, incomplete-record recovery, cursor replay,
+  interrupted/repeated migration, and malformed authoritative state.

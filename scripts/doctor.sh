@@ -127,28 +127,34 @@ fi
 #
 # Optional: a repository gets a board on its first `board.sh hello`. When one
 # exists, report who is registered, stale claims, and whether the shared
-# pre-commit guard is installed from this clone. No board is not a finding.
+# commit and ref guards are installed from this clone. No board is not a finding.
 
 if [[ "$descriptor_ok" == true ]]; then
   board_common="$(git -C "$PROJECT_CHECKOUT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
   board_dir="${ISABELLE_BOARD_DIR:-${board_common:+$board_common/isabelle-tooling/board}}"
-  if [[ -n "$board_dir" && -d "$board_dir/posts" ]]; then
-    board_agents="$(find "$board_dir/agents" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | wc -l)"
-    board_claims="$("$TOOLING_ROOT/scripts/board.sh" --project-root "$PROJECT_CHECKOUT_ROOT" claims 2>/dev/null || true)"
-    board_claim_count="$(printf '%s\n' "$board_claims" | grep -c '  held by ' || true)"
-    board_stale_count="$(printf '%s\n' "$board_claims" | grep -c '\[stale\]' || true)"
-    ok "Coordination board $board_dir: $board_agents agent(s), $board_claim_count claim(s), $board_stale_count stale"
-    board_hook="$(git -C "$PROJECT_CHECKOUT_ROOT" rev-parse --path-format=absolute --git-path hooks 2>/dev/null)/pre-commit"
-    board_install="$TOOLING_ROOT/scripts/board.sh --project-root $PROJECT_CHECKOUT_ROOT install-hook"
-    if grep -Fq 'isabelle-tooling board guard' "$board_hook" 2>/dev/null; then
-      if grep -Fq "$TOOLING_ROOT/scripts/board.sh" "$board_hook"; then
-        ok "Board pre-commit guard installed: $board_hook"
-      else
-        problem "Board pre-commit guard at $board_hook calls another tooling clone; re-run: $board_install"
-      fi
+  if [[ -n "$board_dir" && ( -d "$board_dir/posts" || -f "$board_dir/state.json" || -f "$board_dir/format" ) ]]; then
+    if board_claims="$(env -u ISABELLE_BOARD_AGENT "$TOOLING_ROOT/scripts/board.sh" --project-root "$PROJECT_CHECKOUT_ROOT" claims 2>&1)"; then
+      board_agents="$(find "$board_dir/agents" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | wc -l)"
+      board_claim_count="$(printf '%s\n' "$board_claims" | grep -c '  held by ' || true)"
+      board_stale_count="$(printf '%s\n' "$board_claims" | grep -c '\[stale\]' || true)"
+      ok "Coordination board format 2 at $board_dir: $board_agents agent(s), $board_claim_count claim(s), $board_stale_count stale"
     else
-      note "No board pre-commit guard for this repository; install with: $board_install"
+      problem "Coordination board needs attention: $board_claims (see docs/coordination-board.md for migration/recovery)"
     fi
+    board_hooks="$(git -C "$PROJECT_CHECKOUT_ROOT" rev-parse --path-format=absolute --git-path hooks 2>/dev/null)"
+    board_install="$TOOLING_ROOT/scripts/board.sh --project-root $PROJECT_CHECKOUT_ROOT install-hook"
+    for board_hook_name in pre-commit reference-transaction; do
+      board_hook="$board_hooks/$board_hook_name"
+      if [[ -x "$board_hook" ]] && grep -Fq 'isabelle-tooling board guard' "$board_hook" 2>/dev/null; then
+        if grep -Fq "$TOOLING_ROOT/scripts/board.sh" "$board_hook"; then
+          ok "Board $board_hook_name guard installed: $board_hook"
+        else
+          problem "Board $board_hook_name guard at $board_hook calls another tooling clone; re-run: $board_install"
+        fi
+      else
+        note "No board $board_hook_name guard for this repository; install with: $board_install"
+      fi
+    done
   fi
 fi
 

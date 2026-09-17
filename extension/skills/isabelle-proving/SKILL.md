@@ -209,7 +209,12 @@ branch, and commit. It never merges, cherry-picks, or removes the worktree or
 branch unless asked. Worktrees no longer need a submodule populated: the
 tooling and AutoCorrode live in the tooling clone. When the repository has a
 coordination board (`isabelle-coordination` skill), the coordinator
-registers with `hello`, claims the branch it hands over, and expects the
-worker's handoff as a `handoff` post as well as in its final message.
+registers with `hello` and creates the branch/worktree. The worker claims
+its own branch and files under its own handle; the coordinator releases any
+setup claim before delegation and does not retain ownership of that branch.
+The worker posts its handoff before releasing claims and saying `bye`, and
+also supplies a final message. For an authorized integration, the coordinator
+claims the destination branch under its own handle and guards the affected
+paths and refs before moving it.
 
 Skill revision marker: v0.7.1.

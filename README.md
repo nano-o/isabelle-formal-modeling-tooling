@@ -27,7 +27,7 @@ scripts/render-agents.sh  render the two host worker profiles from agents/
 scripts/release.sh     cut a release of the extension (release branch, tag, REVISION)
 extension/             the agent-host extension (skills, MCP declaration, worker profiles, board hooks)
 scripts/doctor.sh      check the whole setup, print remediations, run nothing
-scripts/board.sh       coordination board for concurrent agents: presence, posts, claims, pre-commit guard
+scripts/board.sh       coordination board for concurrent agents: presence, posts, claims, commit/ref guards
 scripts/setup-ir-venv.sh      create the I/R Python environment (.venv/)
 scripts/install-iq-plugin.sh  build/install/stamp the I/Q jEdit plugin
 scripts/launch_jedit.sh        launch host jEdit with I/Q and I/R
@@ -298,19 +298,30 @@ board.sh show                                 # agents, claims, recent posts, fo
 board.sh digest --cursor tx-layer --mark      # only what is new since last time; silent if nothing
 board.sh --as tx-layer release --all
 board.sh --as tx-layer bye "done"
-board.sh install-hook                         # once per repository: the shared pre-commit guard
+board.sh install-hook                         # once per repository: shared commit and ref guards
 ```
 
-Claims are leases on paths (a directory covers what is below it), refs, the
-token `jedit` for the I/Q session, or `path#passage` for one part of a file
-(advisory). The `pre-commit` hook that `install-hook` writes into the shared
-hooks directory refuses a commit touching a path, or on a branch, that
-another agent holds an active claim on; a claim is stale, and no longer
-blocks, after `ISABELLE_BOARD_STALE_MINUTES` (default 180) without board
-activity by its owner. `ic2.sh start` and `stop` post server notes when a
-board exists. The Claude Code hooks in the extension inject the digest into
-a session; Codex agents run it by instruction. Design, plan and review
-checklist: [docs/coordination-board.md](docs/coordination-board.md).
+Claims are atomic leases on paths (relative to the invocation directory;
+trailing `/` covers a directory), refs, the `jedit` token, or advisory
+`path#passage` fragments. `board.sh` uses Python 3.9+ and the standard library's
+kernel `flock`; interrupted writers leave complete claim snapshots and
+release their locks automatically. A claim is stale after
+`ISABELLE_BOARD_STALE_MINUTES` (default 180) without owner activity. Explicit
+handles renew existing presence, including reads and guard checks.
+
+`install-hook` installs shared `pre-commit` and `reference-transaction`
+guards. The first checks staged paths; the second rejects foreign active
+claims on refs Git reports in prepared transactions. Before editing or
+moving refs, guard the affected resources explicitly: a rejected ref update
+can still leave index/worktree changes, and Git 2.43 branch rename bypasses
+the hook for its destination. `--no-verify` does not bypass the ref guard.
+
+Posts have ordered publication numbers. `digest --mark` emits all unread
+posts and acknowledges only successful output; interrupted reads may repeat
+messages. Existing boards require `migrate --writers-stopped` after stopping
+all old writers; see the [migration and enforcement boundaries](docs/coordination-board.md).
+`ic2.sh` posts server notes when a board exists. Claude Code hooks inject the
+digest; Codex agents read it by instruction.
 
 ## Differential testing: the model runner and the export check
 

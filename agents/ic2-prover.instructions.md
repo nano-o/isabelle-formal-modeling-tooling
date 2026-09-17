@@ -84,9 +84,14 @@ When the repository has a coordination board (from the assigned worktree,
 `"$ISABELLE_TOOLING_ROOT/scripts/board.sh" who` prints agents rather than
 "no board yet"), use it as the `isabelle-coordination` skill describes, with
 the worktree's name as your handle: `hello --task` naming the proof target
-when you start; `claim` the theories you edit and your branch
-(`refs/heads/<branch>`); `post --kind handoff` with worktree, branch, commit
-and validation results before returning; then `bye`. Do not create a board
+when you start; `claim --reason "..."` the theories you edit and your branch
+(`refs/heads/<branch>`) under your own handle. The coordinator has created
+the branch/worktree and released any setup claim before delegation. If a
+foreign claim remains, report the conflict rather than borrowing its handle
+or forcing a takeover. Commit as `ISABELLE_BOARD_AGENT=<your-handle>` when
+identity inference is ambiguous. Post `--kind handoff` with worktree,
+branch, commit and validation results before releasing your claims with
+`bye`; also give the coordinator a complete final message. Do not create a board
 where none exists; that is the coordinator's decision.
 
 ## Before returning

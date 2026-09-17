@@ -218,7 +218,8 @@ assert_output_contains digest_badcursor "invalid cursor"
 # --- bye ----------------------------------------------------------------------------
 
 run_and_capture 0 bye_main board_main --as main bye "done for today"
-assert_output_contains bye_main "released: formal/,PLAN.md#status"
+assert_output_contains bye_main "formal/"
+assert_output_contains bye_main "PLAN.md#status"
 run_and_capture 0 who_after board_main who
 assert_output_lacks who_after "  main  "
 assert_output_contains who_after "  wt  "

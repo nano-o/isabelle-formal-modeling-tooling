@@ -15,7 +15,7 @@ ISABELLE_TEST_FILES := \
 	tests/isabelle/model_runner_test.sh
 TEST_SUPPORT_FILES := tests/test_lib.sh tests/fixtures/isabelle
 HOST_FIXTURE_FILES := tests/host/phase4-fixture.sh tests/host/phase4-check.sh
-PYTHON_TEST_FILES := tests/extension_manifest_test.py
+PYTHON_TEST_FILES := tests/extension_manifest_test.py tests/board_regression_test.py
 
 .PHONY: help validate render check-isabelle
 

@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "component": "isabelle-tooling",
+  "skills": [
+    {"name": "isabelle-setup", "source": "extension/skills/isabelle-setup"},
+    {"name": "isabelle-modeling", "source": "extension/skills/isabelle-modeling"},
+    {"name": "isabelle-proving", "source": "extension/skills/isabelle-proving"},
+    {"name": "isabelle-differential", "source": "extension/skills/isabelle-differential"},
+    {"name": "isabelle-assurance", "source": "extension/skills/isabelle-assurance"}
+  ],
+  "files": [
+    {"path": ".claude/agents/ic2-prover.md", "source": "extension/agents/ic2-prover.md", "executable": false},
+    {"path": ".codex/agents/ic2_prover.toml", "source": "extension/codex/ic2_prover.toml", "executable": false}
+  ],
+  "json_entries": [
+    {"file": ".mcp.json", "pointer": "/mcpServers/iq", "source": "extension/project/mcp-iq.json"}
+  ],
+  "toml_blocks": [
+    {"file": ".codex/config.toml", "table": "mcp_servers.iq", "source": "extension/project/codex-config.toml"}
+  ],
+  "markdown_block": "extension/project/instructions-block.md"
+}

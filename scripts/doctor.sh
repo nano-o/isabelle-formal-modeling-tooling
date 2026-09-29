@@ -4,6 +4,8 @@ set -uo pipefail
 # shellcheck source=common.sh disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/common.sh"
 
+# Doctor only reads: no bytecode caches, no index refreshes, no scratch files.
+export PYTHONDONTWRITEBYTECODE=1 GIT_OPTIONAL_LOCKS=0
 TOKEN_FILE="${IQ_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/isabelle-iq/auth-token}"
 ALLOW_DIRTY=false
 requested_root=""
@@ -14,13 +16,16 @@ usage() {
   cat <<'EOF'
 Usage: doctor.sh [--project-root DIR] [--allow-dirty]
 
-Check the host Isabelle, the tooling clone and its pinned AutoCorrode
-submodule, the single ic2 component registration and its JAR, the I/Q plugin
-and token, the I/R virtual environment, and the project's descriptor. Reports
-what it found and prints remediation commands; it never runs them.
+Check the project's descriptor and project files, ISABELLE_TOOLING_ROOT, the
+host Isabelle, the tooling clone and its pinned AutoCorrode submodule, the host
+configuration of both agent hosts, the single ic2 component registration and
+its JAR, the I/Q plugin and token, the I/R virtual environment, and, when the
+project has agent-board.conf, the coordination board. Reports what it found
+and prints remediation commands; it never runs them, and it writes nothing.
 
   --project-root DIR  Checkout to diagnose (default: nearest descriptor above $PWD)
-  --allow-dirty       Pass with a modified tooling clone or submodule, marking the report
+  --allow-dirty       Pass with a modified tooling clone or submodule, or skills
+                      in link mode, marking the report
 EOF
 }
 
@@ -44,7 +49,8 @@ echo "Isabelle tooling doctor ($TOOLING_ROOT)"
 # --- project descriptor -------------------------------------------------------
 
 descriptor_ok=false
-if resolve_project "$requested_root" 2>"$TOOLING_ROOT/.doctor-resolve.err"; then
+if resolve_error="$( (resolve_project "$requested_root") 2>&1 >/dev/null)"; then
+  resolve_project "$requested_root"
   descriptor_ok=true
   ok "Project descriptor: $PROJECT_DESCRIPTOR"
   ok "Source root $PROJECT_SOURCE_ROOT; formal root $PROJECT_FORMAL_ROOT"
@@ -57,10 +63,22 @@ if resolve_project "$requested_root" 2>"$TOOLING_ROOT/.doctor-resolve.err"; then
     ok "Session ${PROJECT_CONF[build_session]} in $session_dir (ic2 base ${PROJECT_CONF[ic2_base_session]})"
   fi
 else
-  problem "$(<"$TOOLING_ROOT/.doctor-resolve.err")"
+  problem "${resolve_error#ERROR: }"
 fi
-rm -f "$TOOLING_ROOT/.doctor-resolve.err"
 expected_isabelle="${PROJECT_CONF[isabelle_version]:-Isabelle2025-2}"
+
+# --- ISABELLE_TOOLING_ROOT ------------------------------------------------------------
+#
+# The project's .mcp.json, .codex/config.toml and worker profiles name the
+# tooling only through this variable.
+
+if [[ -z "${ISABELLE_TOOLING_ROOT:-}" ]]; then
+  problem "ISABELLE_TOOLING_ROOT is not set; the project's I/Q server and proof worker need it. Set it in your shell profile: export ISABELLE_TOOLING_ROOT=$TOOLING_ROOT, then restart the host session."
+elif [[ "$(canonical_dir "$ISABELLE_TOOLING_ROOT" 2>/dev/null)" != "$TOOLING_ROOT" ]]; then
+  problem "ISABELLE_TOOLING_ROOT names $ISABELLE_TOOLING_ROOT, but this doctor runs from $TOOLING_ROOT; point it at the runtime checkout, or run that checkout's doctor."
+else
+  ok "ISABELLE_TOOLING_ROOT names this tooling checkout"
+fi
 
 # --- Isabelle -----------------------------------------------------------------------
 
@@ -96,14 +114,7 @@ else
 fi
 
 tooling_head="$(git -C "$TOOLING_ROOT" rev-parse HEAD 2>/dev/null || true)"
-# A clone checked out at a release commit carries extension/REVISION naming
-# the source commit it was built from; that is the revision everything is
-# compared against. A source checkout has no REVISION and HEAD is the source.
-tooling_source_rev="$tooling_head"
-if [[ -f "$TOOLING_ROOT/extension/REVISION" ]]; then
-  tooling_source_rev="$(sed -n 's/^source_revision=//p' "$TOOLING_ROOT/extension/REVISION" | head -n 1)"
-fi
-dirty="$(git -C "$TOOLING_ROOT" status --porcelain --ignore-submodules=none 2>/dev/null; git -C "$AUTOCORRODE_DIR" status --porcelain 2>/dev/null | sed 's|^|AutoCorrode/|')"
+dirty="$(git -C "$TOOLING_ROOT" --no-optional-locks status --porcelain --ignore-submodules=none 2>/dev/null; git -C "$AUTOCORRODE_DIR" --no-optional-locks status --porcelain 2>/dev/null | sed 's|^|AutoCorrode/|')"
 if [[ -n "$dirty" ]]; then
   if [[ "$ALLOW_DIRTY" == true ]]; then
     note "Tooling clone or submodule is modified (--allow-dirty): $(printf '%s' "$dirty" | awk '{print $2}' | paste -sd' ')"
@@ -113,81 +124,107 @@ if [[ -n "$dirty" ]]; then
 else
   ok "Tooling clone and submodule are clean at $tooling_head"
 fi
-if [[ "$descriptor_ok" == true ]]; then
-  if [[ -z "${PROJECT_CONF[tooling_revision]+set}" ]]; then
-    problem "Descriptor has no tooling_revision; set it to the tooling clone revision the artifacts were validated against ($tooling_head)."
-  elif [[ "${PROJECT_CONF[tooling_revision]}" == "$tooling_source_rev" ]]; then
-    ok "Descriptor tooling_revision matches the tooling clone ($tooling_source_rev)"
-  else
-    problem "Descriptor tooling_revision ${PROJECT_CONF[tooling_revision]} differs from the tooling clone's source revision $tooling_source_rev; check out that revision or revalidate and update the descriptor."
-  fi
-fi
-
-# --- installed agent-host extensions ------------------------------------------------
+# --- project files ----------------------------------------------------------------------
 #
-# Each host caches installed plugins under its own directory. A released
-# extension carries REVISION; its source_revision must be the tooling clone's,
-# or the skills an agent reads and the scripts it runs come from different
-# revisions. A host with no installed extension is a note, not a failure.
+# sync --check compares the skills, worker profiles, MCP declarations and the
+# instruction block with the pinned Git object, and the runtime checkout with
+# the pin: the one-active-runtime rule.
 
-# installed_extension_dirs HOST CACHE_ROOT: the directories of the currently
-# installed extension. Claude Code records the active version's path in
-# installed_plugins.json and keeps superseded versions in its cache for a
-# while; Codex CLI's cache holds only the installed version.
-installed_extension_dirs() {
-  local host="$1" cache_root="$2"
-  local registry="$HOME/.claude/plugins/installed_plugins.json"
-  if [[ "$host" == "Claude Code" && -f "$registry" ]]; then
-    python3 - "$registry" <<'PYEOF' 2>/dev/null
-import json, sys
-data = json.load(open(sys.argv[1]))
-for key, entries in data.get("plugins", {}).items():
-    if key.startswith("isabelle-formal-modeling@"):
-        for entry in entries:
-            print(entry["installPath"])
-PYEOF
-  else
-    find "$cache_root" -mindepth 2 -maxdepth 3 -type d -path '*/isabelle-formal-modeling/*' 2>/dev/null | sort
-  fi
-}
-
-check_extension() {
-  local host="$1" cache_root="$2" agent_file="$3"
-  local revisions rev expected_sha install_dir src tag
-  [[ -d "$cache_root" ]] || { note "$host: no plugin cache at $cache_root; extension not installed for this host"; return; }
-  mapfile -t revisions < <(installed_extension_dirs "$host" "$cache_root" | while read -r d; do [[ -f "$d/REVISION" ]] && echo "$d/REVISION"; done)
-  if [[ "${#revisions[@]}" -eq 0 ]]; then
-    if installed_extension_dirs "$host" "$cache_root" | grep -q .; then
-      note "$host: the installed extension has no REVISION file (a development install, not a release); revision skew cannot be checked"
-    else
-      note "$host: extension not installed"
-    fi
-    return
-  fi
-  for rev in "${revisions[@]}"; do
-    install_dir="$(dirname "$rev")"
-    src="$(sed -n 's/^source_revision=//p' "$rev" | head -n 1)"
-    tag="$(sed -n 's/^release_tag=//p' "$rev" | head -n 1)"
-    if [[ "$src" == "$tooling_source_rev" ]]; then
-      ok "$host: installed extension $tag matches the tooling clone ($install_dir)"
-    else
-      problem "$host: installed extension $tag was built from $src, but the tooling clone is at $tooling_source_rev; upgrade the extension or check out that revision ($install_dir)"
-    fi
-    if [[ -n "$agent_file" ]]; then
-      expected_sha="$(sed -n 's/^codex_agent_sha256=//p' "$rev" | head -n 1)"
-      if [[ ! -f "$agent_file" ]]; then
-        problem "$host: proof-worker profile is not installed; run: install -m 0644 $install_dir/codex/ic2_prover.toml $agent_file"
-      elif [[ "$(openssl dgst -sha256 "$agent_file" | awk '{print $NF}')" == "$expected_sha" ]]; then
-        ok "$host: installed proof-worker profile matches the extension ($agent_file)"
-      else
-        problem "$host: installed proof-worker profile differs from the extension's; reinstall: install -m 0644 $install_dir/codex/ic2_prover.toml $agent_file"
-      fi
-    fi
+# relay PREFIX: pass [OK]/[NOTE]/[FAIL] lines from stdin through ok/note/problem.
+relay() {
+  local prefix="$1" line
+  while IFS= read -r line; do
+    case "$line" in
+      "[OK]"*) ok "$prefix${line#"[OK]   "}" ;;
+      "[NOTE]"*) note "$prefix${line#"[NOTE] "}" ;;
+      "[FAIL]"*) problem "$prefix${line#"[FAIL] "}" ;;
+      *) [[ -z "$line" ]] || problem "$prefix$line" ;;
+    esac
   done
 }
 
-check_extension "Claude Code" "$HOME/.claude/plugins/cache" ""
-check_extension "Codex CLI" "${CODEX_HOME:-$HOME/.codex}/plugins/cache" "${CODEX_HOME:-$HOME/.codex}/agents/ic2_prover.toml"
+if [[ "$descriptor_ok" == true ]]; then
+  check_args=(sync --check --project-root "$PROJECT_CHECKOUT_ROOT")
+  [[ "$ALLOW_DIRTY" == true ]] && check_args+=(--allow-dirty)
+  relay "Project files: " < <("$TOOLING_ROOT/bin/isabelle-tooling" "${check_args[@]}" 2>&1)
+fi
+
+# --- host configuration ------------------------------------------------------------------
+#
+# The project's files are the only delivery: an installed Isabelle plugin or
+# its marketplace, a user-level iq server or a user-level proof-worker profile
+# would duplicate them. CLAUDE_CONFIG_DIR and CODEX_HOME isolate fixtures.
+
+relay "Host configuration: " < <(python3 - "${PROJECT_CHECKOUT_ROOT:-}" <<'PYEOF'
+import json, os, sys, tomllib
+from pathlib import Path
+home = Path.home()
+claude = Path(os.environ['CLAUDE_CONFIG_DIR']) if os.environ.get('CLAUDE_CONFIG_DIR') else home / '.claude'
+claude_json = claude / '.claude.json' if os.environ.get('CLAUDE_CONFIG_DIR') else home / '.claude.json'
+codex = Path(os.environ.get('CODEX_HOME') or home / '.codex')
+project = sys.argv[1]
+found = []
+
+
+def load_json(path):
+    try:
+        return json.loads(path.read_text()) if path.is_file() else {}
+    except (OSError, ValueError):
+        print(f'[NOTE] cannot read {path}; its contents were not checked')
+        return {}
+
+
+def keys(data, *path):
+    for key in path:
+        data = data.get(key, {}) if isinstance(data, dict) else {}
+    return list(data) if isinstance(data, dict) else []
+
+
+plugin = lambda k: k.startswith('isabelle-formal-modeling@')
+market = lambda k: k.startswith('isabelle-formal-modeling')
+installed = load_json(claude / 'plugins/installed_plugins.json')
+settings = load_json(claude / 'settings.json')
+for key in sorted(set(keys(installed, 'plugins') + keys(settings, 'enabledPlugins'))):
+    if plugin(key):
+        found.append(f'Claude Code has the plugin {key} ({claude}); uninstall it: claude plugin uninstall {key}')
+for key in sorted(set(keys(load_json(claude / 'plugins/known_marketplaces.json')) +
+                      keys(settings, 'extraKnownMarketplaces'))):
+    if market(key):
+        found.append(f'Claude Code knows the marketplace {key} ({claude}); remove it: '
+                     f'claude plugin marketplace remove {key}')
+user = load_json(claude_json)
+if 'iq' in keys(user, 'mcpServers'):
+    found.append(f'Claude Code declares a user-level iq MCP server in {claude_json}; remove it: '
+                 'claude mcp remove --scope user iq')
+if project and 'iq' in keys(user, 'projects', project, 'mcpServers'):
+    found.append(f'Claude Code declares a local iq MCP server for {project} in {claude_json}; remove it: '
+                 'claude mcp remove --scope local iq')
+config = codex / 'config.toml'
+try:
+    codex_config = tomllib.loads(config.read_text()) if config.is_file() else {}
+except (OSError, tomllib.TOMLDecodeError):
+    print(f'[NOTE] cannot read {config}; its contents were not checked')
+    codex_config = {}
+for key in keys(codex_config, 'plugins'):
+    if plugin(key):
+        found.append(f'Codex CLI has the plugin {key} in {config}; uninstall it and remove its [plugins] table')
+for key in keys(codex_config, 'marketplaces'):
+    if market(key):
+        found.append(f'Codex CLI knows the marketplace {key} in {config}; remove its [marketplaces] table')
+if 'iq' in keys(codex_config, 'mcp_servers'):
+    found.append(f'Codex CLI declares a user-level iq MCP server in {config}; remove [mcp_servers.iq] there')
+for path in sorted((claude / 'agents').glob('*.md')) if (claude / 'agents').is_dir() else []:
+    if path.stem == 'ic2-prover' or '\nname: ic2-prover\n' in path.read_text(errors='replace'):
+        found.append(f'a user-level Claude Code proof-worker profile duplicates the project one: move {path} aside')
+for path in sorted((codex / 'agents').glob('*.toml')) if (codex / 'agents').is_dir() else []:
+    if path.stem == 'ic2_prover' or '\nname = "ic2_prover"' in '\n' + path.read_text(errors='replace'):
+        found.append(f'a user-level Codex CLI proof-worker profile duplicates the project one: move {path} aside')
+for message in found:
+    print(f'[FAIL] {message}')
+if not found:
+    print(f'[OK]   no Isabelle plugin, marketplace, user-level iq server or proof-worker profile ({claude}, {codex})')
+PYEOF
+)
 
 # --- ic2 component -----------------------------------------------------------------
 
@@ -265,6 +302,48 @@ elif "$IR_VENV_DIR/bin/python3" -c 'import mcp, prompt_toolkit; from mcp.server.
   ok "I/R imports succeed with $IR_VENV_DIR/bin/python3"
 else
   problem "I/R imports fail in the tooling venv; rerun $TOOLING_ROOT/scripts/setup-ir-venv.sh"
+fi
+
+# --- agent-board, optional ----------------------------------------------------------------
+#
+# Only when the project has agent-board.conf. The tooling never reads the
+# board's storage or descriptor: it checks the interface and runs board doctor.
+
+if [[ "$descriptor_ok" == true ]] && board_configured "$PROJECT_CHECKOUT_ROOT"; then
+  board_interface=""
+  board_missing=""
+  if ! board="$(resolve_agent_board)"; then
+    problem "board: this project has agent-board.conf, but agent-board does not resolve; put it on PATH or set AGENT_BOARD_COMMAND to its absolute path"
+  elif ! board_version="$(timeout 10 "$board" version --json 2>/dev/null)" ||
+       ! { read -r board_interface && read -r board_missing; } < <(printf '%s' "$board_version" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+print(data["interface"])
+print(" ".join(sorted({"doctor", "project"} - set(data["capabilities"]))) or "-")' 2>/dev/null); then
+    problem "board: $board version --json failed or printed no valid object"
+  elif [[ "$board_interface" != "$AGENT_BOARD_INTERFACE" ]]; then
+    problem "board: $board has interface $board_interface; this tooling supports interface $AGENT_BOARD_INTERFACE"
+  elif [[ "$board_missing" != "-" ]]; then
+    problem "board: $board lacks the capabilities: $board_missing"
+  else
+    board_args=(doctor --json --project-root "$PROJECT_CHECKOUT_ROOT")
+    [[ "$ALLOW_DIRTY" == true ]] && board_args+=(--allow-dirty)
+    board_rc=0
+    board_report="$(timeout 60 "$board" "${board_args[@]}" 2>/dev/null)" || board_rc=$?
+    if [[ "$board_rc" -ne 0 && "$board_rc" -ne 1 ]] ||
+       ! board_lines="$(printf '%s' "$board_report" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+tags = {"ok": "[OK]  ", "note": "[NOTE]", "fail": "[FAIL]"}
+for check in data["checks"]:
+    print(tags[check["status"]], check["id"] + ":", " ".join(check["message"].split()))' 2>/dev/null)"; then
+      problem "board: $board doctor could not run (exit $board_rc); run it yourself for details"
+    else
+      relay "board: " <<<"$board_lines"
+    fi
+  fi
+elif [[ "$descriptor_ok" == true ]]; then
+  ok "No agent-board.conf: this project does not use the coordination board"
 fi
 
 if ((failures == 0)); then

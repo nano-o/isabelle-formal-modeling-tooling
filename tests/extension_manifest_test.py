@@ -47,4 +47,27 @@ assert "hooks" not in claude_manifest
 assert "hooks" not in codex_manifest
 assert not (REPO_ROOT / "extension/hooks").exists()
 
+# The project delivery declares the same two shapes: a member of .mcp.json for
+# Claude Code and a managed [mcp_servers.iq] block for Codex CLI, both naming
+# the tooling only through ISABELLE_TOOLING_ROOT.
+import tomllib
+
+project = load("extension/project/manifest.json")
+assert project["component"] == "isabelle-tooling" and project["format"] == 1
+installed = sorted(s["name"] for s in project["skills"])
+shipped = sorted(p.name for p in (REPO_ROOT / "extension/skills").iterdir() if (p / "SKILL.md").is_file())
+assert installed == shipped, (installed, shipped)
+for skill in project["skills"]:
+    assert (REPO_ROOT / skill["source"] / "SKILL.md").is_file()
+for item in project["files"] + project["json_entries"] + project["toml_blocks"]:
+    assert (REPO_ROOT / item["source"]).is_file(), item
+assert (REPO_ROOT / project["markdown_block"]).is_file()
+
+project_claude = load("extension/project/mcp-iq.json")
+assert project_claude["command"] == "${ISABELLE_TOOLING_ROOT}/extension/bin/iq-bridge.sh"
+assert project_claude["env"] == claude_iq["env"]
+codex_block = (REPO_ROOT / "extension/project/codex-config.toml").read_text(encoding="utf-8")
+assert codex_block.splitlines()[0].startswith("# Managed by isabelle-tooling")
+assert tomllib.loads(codex_block) == {"mcp_servers": {"iq": codex_iq}}
+
 print("extension manifest host-parity checks passed")

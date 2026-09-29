@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-SCRIPT_FILES := $(wildcard scripts/*.sh) extension/bin/iq-bridge.sh
+SCRIPT_FILES := $(wildcard scripts/*.sh) extension/bin/iq-bridge.sh bin/isabelle-tooling
 TEST_FILES := \
 	tests/common_test.sh \
 	tests/descriptor_test.sh \
@@ -15,7 +15,8 @@ ISABELLE_TEST_FILES := \
 	tests/isabelle/model_runner_test.sh
 TEST_SUPPORT_FILES := tests/test_lib.sh tests/fixtures/isabelle
 HOST_FIXTURE_FILES := tests/host/phase4-fixture.sh tests/host/phase4-check.sh
-PYTHON_TEST_FILES := tests/extension_manifest_test.py
+PYTHON_TEST_FILES := tests/extension_manifest_test.py tests/project_install_test.py
+PYTHON_FILES := scripts/isabelle_tooling.py scripts/project_files.py $(PYTHON_TEST_FILES)
 
 .PHONY: help validate render check-isabelle
 
@@ -30,7 +31,8 @@ help:
 
 validate:
 	./scripts/render-agents.sh --check
-	python3 -c 'import json,sys; [json.load(open(f)) for f in sys.argv[1:]]' .claude-plugin/marketplace.json extension/.claude-plugin/plugin.json extension/.mcp.json extension/.codex-plugin/plugin.json extension/codex/.mcp.json .agents/plugins/marketplace.json
+	python3 -c 'import json,sys; [json.load(open(f)) for f in sys.argv[1:]]' .claude-plugin/marketplace.json extension/.claude-plugin/plugin.json extension/.mcp.json extension/.codex-plugin/plugin.json extension/codex/.mcp.json .agents/plugins/marketplace.json extension/project/*.json
+	python3 -c 'import ast,sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]' $(PYTHON_FILES)
 	@for test_file in $(PYTHON_TEST_FILES); do \
 		PYTHONDONTWRITEBYTECODE=1 python3 "$$test_file" || exit 1; \
 	done

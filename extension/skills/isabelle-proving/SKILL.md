@@ -209,16 +209,26 @@ branch, and commit. It never merges, cherry-picks, or removes the worktree or
 branch unless asked. Worktrees no longer need a submodule populated: the
 tooling and AutoCorrode live in the tooling clone. When the checkout uses
 agent-board (`agent-board.conf` at its root; the `agent-coordination`
-skill), the coordinator registers with `hello` and creates the
-branch/worktree. The proof resources on the board are theory files, proof
-branches (`refs/heads/<branch>`) and `token:jedit`, the human's I/Q editing
-session in the main worktree, which an agent claims before editing through
-I/Q there. The worker claims
-its own branch and files under its own handle; the coordinator releases any
-setup claim before delegation and does not retain ownership of that branch.
-The worker posts its handoff before releasing claims and saying `bye`, and
-also supplies a final message. For an authorized integration, the coordinator
-claims the destination branch under its own handle and guards the affected
-paths and refs before moving it.
+skill, whose `references/delegation.md` has the procedure), choose the
+worker's mode and state it on the brief's first line, `Mode: independent.
+Handle: HANDLE.` or `Mode: supervised by HANDLE.`; a brief without one makes
+an independent worker. The proof resources on the board are theory files,
+proof branches (`refs/heads/<branch>`) and `token:jedit`, the human's I/Q
+editing session in the main worktree, which an agent claims before editing
+through I/Q there.
+
+- **Independent**, the usual mode for an autonomous proof job: the
+  coordinator registers with `hello`, creates the branch and worktree, and
+  releases any setup claim. The worker claims its branch and theories under
+  its own handle, commits when the brief authorizes it, and posts its
+  handoff before releasing its claims with `bye`. For an authorized
+  integration, the coordinator claims the destination branch under its own
+  handle and guards the affected paths and refs before moving it.
+- **Supervised**: the coordinator claims the worker's theories and branch
+  before launching it and keeps them until the worker has stopped. The
+  worker makes no board calls, commits, or ref or index changes; the
+  coordinator reviews its report and commits in its worktree as
+  `AGENT_BOARD_AGENT=<coordinator> git -C <worktree> commit ...`. ic2's own
+  start and stop notes are allowed in either mode.
 
 Skill revision marker: v0.7.1.

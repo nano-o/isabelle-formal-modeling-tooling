@@ -76,24 +76,36 @@ memory and CPU snapshot of the server's processes.
 Keep the theorem statement and the definitions unchanged unless the task
 explicitly authorizes broader changes. You may add local helper lemmas when
 they preserve the requested statement. Commit only when the task explicitly
-authorizes it.
+authorizes it, and never as a supervised worker.
 
 ## The coordination board
 
 When the checkout has `agent-board.conf` at its root, it coordinates
-through agent-board: run `"${AGENT_BOARD_COMMAND:-agent-board}"` as the
-`agent-coordination` skill describes, with the worktree's name as your
-handle: `hello --task` naming the proof target when you start; `claim
---reason "..."` the theories you edit and your branch
-(`refs/heads/<branch>`) under your own handle. The coordinator has created
-the branch/worktree and released any setup claim before delegation. If a
-foreign claim remains, report the conflict rather than borrowing its handle
-or forcing a takeover. Commit as `AGENT_BOARD_AGENT=<your-handle>` when
-identity inference is ambiguous. Post `--kind handoff` with worktree,
-branch, commit and validation results before releasing your claims with
-`bye`; also give the coordinator a complete final message. `ic2.sh start`
-and `stop` post their own notes as `ic2`. Without `agent-board.conf`, do
-not use a board.
+through agent-board. The first line of your brief says how you take part:
+
+- **`Mode: supervised by HANDLE.`** Your coordinator holds the claims and
+  does the coordinating; do not load the `agent-coordination` skill. Make
+  no board calls, commits, ref or index changes, and no further
+  delegation. Stay within the assigned paths and resources; ask the
+  coordinator before expanding them. If you need broader scope, reach your
+  check-in boundary without new direction, or lose contact with the
+  coordinator, pause shared writes and report back. Report your edits and
+  validation results; the coordinator commits.
+- **`Mode: independent. Handle: HANDLE.`, or no mode line.** Read
+  `.agents/skills/agent-coordination/SKILL.md` first and follow it under
+  that handle (without one, the worktree's name): `hello --task` naming the
+  proof target, then `claim --reason "..."` the theories you edit and your
+  branch (`refs/heads/<branch>`). The coordinator has created the branch
+  and worktree and released any setup claim; if a foreign claim remains,
+  report the conflict rather than borrowing its handle or forcing a
+  takeover. Commit only when the brief authorizes it, as
+  `AGENT_BOARD_AGENT=<handle> git commit ...`. Post `--kind handoff` with
+  worktree, branch, commit and validation results before releasing your
+  claims with `bye`.
+
+In either mode, `ic2.sh start` and `stop` post their own notes as `ic2`,
+and the human's jEdit session in the main worktree, `token:jedit`, is not
+yours. Without `agent-board.conf`, do not use a board.
 
 ## Before returning
 

@@ -55,11 +55,25 @@ checkout root, found by `--project-root` or by walking up from the current
 directory, and the tooling clone from its own location. See the README for
 the descriptor format and the naming rule.
 
+## Delivery to projects
+
+A project receives the tooling's instructions and configuration as
+committed files, installed by `bin/isabelle-tooling init`, `sync` and
+`update` from the Git object its descriptor pins, never from a working
+tree: the skills, the two worker profiles, the `iq` MCP server entries for
+both hosts and a block in the root instruction files. An inventory in
+`.isabelle-tooling/` records what was installed, so `sync --check` and
+doctor detect drift and partial installs. The code those files call still
+runs from the one tooling clone that `ISABELLE_TOOLING_ROOT` names, which
+must be at the project's pin. The installer rules are shared with
+agent-board through identical copies of `scripts/project_files.py`.
+
 ## Coordination
 
 Coordination between agents is agent-board, a separate repository. The
 tooling's only part is optional: when `agent-board.conf` is at the checkout
 root and the executable resolves, `ic2.sh` posts server notes through it
-under a five-second timeout, and the proving skill and worker profiles name
-the proof resources to claim. The tooling never reads the board's
-descriptor or storage.
+under a five-second timeout, the proving skill and worker profiles name
+the proof resources to claim and the two delegation modes, and doctor
+checks the board's interface and runs its read-only doctor. The tooling
+never reads the board's descriptor or storage.

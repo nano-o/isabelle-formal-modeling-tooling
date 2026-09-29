@@ -1,30 +1,44 @@
 ---
 name: isabelle-setup
-description: Set up the Isabelle formal-modeling tooling for a project checkout — locate the pinned Isabelle release, verify the tooling clone, show the one-time ic2/I/Q/token steps for the user to run, create the descriptor and an empty session from templates, and run doctor. Use when the user asks to "set up Isabelle for this project", to add formal modelling to a codebase, or when doctor fails on a fresh machine.
+description: Set up and check the Isabelle formal-modeling tooling for a project checkout — the runtime tooling clone at the project's pin, the pinned Isabelle release, the one-time ic2/I/Q/token steps for the user to run, the project files that `isabelle-tooling init` installs, and doctor. Use when the user asks to "set up Isabelle for this project", to add formal modelling to a codebase, after changing the tooling pin, or when doctor fails.
 ---
 
 # Setting up Isabelle for a project
 
-You run inside the agent host the user has already installed (Claude Code or
-Codex CLI) with this extension loaded. You never install or configure the
-host. Every step below either reads, runs a tooling script, or *shows* the
-user a command that touches their home directory; those you do not run
-yourself unless the user says so.
+The tooling reaches a project as committed files: this skill and the other
+four under `.agents/skills/` (Claude Code sees them through
+`.claude/skills/`), the `ic2-prover` worker profiles, the project's `iq` MCP
+server in `.mcp.json` and `.codex/config.toml`, and a block in the root
+`AGENTS.md`. `isabelle-tooling init` installed them before this session
+started, pinned at the commit recorded as `tooling_revision` in
+`isabelle-tooling.conf`. You never install or configure the agent host
+itself. Every step below reads, runs a tooling command, or *shows* the user
+a command that touches their home directory; run those only when the user
+says so.
 
-## 1. Find the tooling clone
+The entry point is `"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling"`, written
+`isabelle-tooling` below.
 
-The tooling clone is the source clone of `isabelle-formal-modeling-tooling`
+## 1. The runtime tooling clone
+
+`ISABELLE_TOOLING_ROOT` names the clone of `isabelle-formal-modeling-tooling`,
 with its `AutoCorrode` submodule, at a path the user chose, never inside a
-project checkout. The extension finds it through `ISABELLE_TOOLING_ROOT`.
+project checkout. The project's `iq` server and proof worker find the tooling
+only through it.
 
 ```bash
-test -x "$ISABELLE_TOOLING_ROOT/scripts/doctor.sh" && echo ok
+test -x "$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" && echo ok
+git -C "$ISABELLE_TOOLING_ROOT" rev-parse HEAD
 ```
 
 If the variable is unset or wrong, stop and tell the user to set it in their
-shell environment to the clone's path and to restart the host session. If
-`AutoCorrode/ic2/etc/build.props` is missing, the submodule is not populated:
-show `git -C "$ISABELLE_TOOLING_ROOT" submodule update --init`.
+shell profile and restart the host session. The clone must be checked out,
+clean, at the project's `tooling_revision`; one clone serves every project on
+that pin, and a project on another pin fails doctor with the revision it
+needs. Keep that clone at the `stable` branch and develop the tooling in a
+separate worktree of it. If `AutoCorrode/ic2/etc/build.props` is missing,
+the submodule is not populated: show
+`git -C "$ISABELLE_TOOLING_ROOT" submodule update --init`.
 
 ## 2. Locate Isabelle
 
@@ -38,7 +52,7 @@ download or install Isabelle; do not continue to later steps.
 
 ## 3. Build products inside the clone
 
-Run these; they write only inside the tooling clone:
+This writes only inside the tooling clone:
 
 ```bash
 "$ISABELLE_TOOLING_ROOT/scripts/setup-ir-venv.sh"   # .venv/ for the I/R bridge
@@ -53,60 +67,96 @@ says so.
   `"$ISABELLE_TOOLING_ROOT/scripts/build-ic2.sh"` runs
   `isabelle components -u $ISABELLE_TOOLING_ROOT/AutoCorrode/ic2`, adding one
   line to `$ISABELLE_HOME_USER/etc/components`, then `isabelle scala_build`,
-  which writes the JAR inside the clone. Isabelle discovers components only
-  through that file. Exactly one ic2 component may be registered; if `isabelle
-  components -l` already lists another `ic2`, show the pair `isabelle
-  components -x OLD` then `-u NEW`. Undo: `isabelle components -x
-  $ISABELLE_TOOLING_ROOT/AutoCorrode/ic2`.
+  which writes the JAR inside the clone. Exactly one ic2 component may be
+  registered; if `isabelle components -l` already lists another `ic2`, show
+  the pair `isabelle components -x OLD` then `-u NEW`. Undo: `isabelle
+  components -x $ISABELLE_TOOLING_ROOT/AutoCorrode/ic2`.
 - **Install the I/Q jEdit plugin** (jEdit workflow only; jEdit must be closed):
   `"$ISABELLE_TOOLING_ROOT/scripts/install-iq-plugin.sh"` writes one JAR and a
   stamp under `$ISABELLE_HOME_USER/jedit/jars/`. Undo: delete those two files.
 - **Create the I/Q token** at `~/.config/isabelle-iq/auth-token`, mode 600:
   `mkdir -p ~/.config/isabelle-iq && (umask 077; openssl rand -hex 32 >
   ~/.config/isabelle-iq/auth-token)`. Never print its contents.
-- **Codex CLI only — install the proof-worker profile.** The extension ships
-  `codex/ic2_prover.toml`; show
-  `install -m 0644 "<extension>/codex/ic2_prover.toml" ~/.codex/agents/ic2_prover.toml`
-  (create the directory first). Under Claude Code the worker is part of the
-  extension and needs no step.
+- **Approve the project's configuration once per host.** Codex CLI reads
+  `.codex/config.toml` only in a trusted project; Claude Code asks to approve
+  the `iq` server from `.mcp.json` at the first start (or the user lists it
+  in `enabledMcpjsonServers` in `.claude/settings.local.json`).
 
-## 5. Create the project files
+Doctor fails while an Isabelle formal-modeling plugin or its marketplace is
+installed in either host, or a user-level `iq` server or `ic2-prover`
+profile exists: each would duplicate a project file. It prints the command
+that removes each one; show it to the user.
 
-Ask for the session name (an Isabelle identifier) and, if not obvious, where
-the formal artifacts should live (default `formal/` at the checkout root, code
-at `.`). Then:
+## 5. The project files
+
+If the checkout has no `isabelle-tooling.conf` yet, the user runs, before a
+host session starts there (ask for the session name, an Isabelle identifier,
+and where the formal artifacts go: default `formal/`, code at `.`):
 
 ```bash
-"$ISABELLE_TOOLING_ROOT/scripts/new-project.sh" --checkout <checkout> --session <Name> [--formal-rel formal] [--source-rel .]
+"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" init --session <Name> [--formal-rel formal] [--source-rel .]
 ```
 
-This writes `isabelle-tooling.conf` at the checkout root and
-`<formal>/{ROOT,ROOTS,AGENTS.md,README.md,CLAUDE.md -> AGENTS.md}` plus
-`<formal>/<Name>/{ROOT,<Name>.thy}`, refusing to overwrite anything. The
-descriptor records `tooling_revision`, the clone's current commit. Commit
-these files with the project; the descriptor must be in every clone and
-worktree.
+It creates the descriptor and `<formal>/{ROOTS,AGENTS.md,README.md,
+CLAUDE.md -> AGENTS.md}` and `<formal>/<Name>/{ROOT,<Name>.thy}`, installs
+the project files, prints every path it touched and the `git add` command
+for them, and never stages, commits or overwrites anything. The files are
+committed with the project, so every clone and worktree has them.
+
+Afterwards:
+
+- `isabelle-tooling sync --check` checks the project files against the pin,
+  read-only.
+- `isabelle-tooling sync` reinstalls exactly the pinned files; it refuses
+  rather than overwrite a managed file someone edited.
+- `isabelle-tooling update REV` (or `update stable`) is the only command that
+  moves the pin; the runtime clone must then be checked out at that
+  revision.
+- `isabelle-tooling remove` takes the project files out again, leaving the
+  session and the instruction files.
+- `isabelle-tooling skills list` and `skills show NAME` print the skills of
+  the pinned revision without installing anything.
+
+A project whose descriptor predates project files (no
+`.isabelle-tooling/inventory.json`) adopts them with `update REV`. After a
+sync or update, the host sees changed skills, profiles or MCP servers only in
+a new session.
+
+**Changing the tooling's skills.** In a development worktree of the tooling,
+`isabelle-tooling sync --link --source <worktree>` replaces the installed
+skills with symlinks into it, so an edit shows in the next session without a
+reinstall. That is development state: nothing in it may be committed, doctor
+fails on it without `--allow-dirty`, and `isabelle-tooling sync` restores the
+copies.
 
 ## 6. Doctor, then build
 
 ```bash
-"$ISABELLE_TOOLING_ROOT/scripts/doctor.sh" --project-root <checkout>
-isabelle build -D <checkout>/<formal>
+"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" doctor
+isabelle build -D <formal>
 ```
 
-Doctor prints remediation commands and runs none; fix what it reports, in
-order, then rerun it. A green doctor and a building empty session is the
-finished setup. Then hand over to `isabelle-modeling` (the conventions
-interview comes first), `isabelle-proving`, `isabelle-differential`, and
-`isabelle-assurance` for the statement of what was established.
+Doctor reads only; it prints remediation commands and runs none. Fix what it
+reports, in order, then rerun it. A green doctor and a building empty
+session is the finished setup. Then hand over to `isabelle-modeling` (the
+conventions interview comes first), `isabelle-proving`,
+`isabelle-differential`, and `isabelle-assurance` for the statement of what
+was established.
+
+## Several agents: the coordination board
+
+A project may also use agent-board, a separate tool, so that several agents
+working in one repository see each other's claims. The Isabelle tooling
+never installs or upgrades it. When the user wants it, show them, from the
+agent-board clone's README: put `agent-board` on `PATH`, then run
+`agent-board init` and optionally `agent-board install-hook` in the
+project, and start a new session. With `agent-board.conf` present, doctor
+also runs the board's doctor, and the proving skill and worker profiles
+name the proof resources and the two delegation modes.
 
 ## What this skill never does
 
-Install or configure Claude Code or Codex CLI; download Isabelle; write under
-`$HOME` on its own; register a project's own AutoCorrode copy as a component;
-nest the tooling clone inside a project checkout.
-
-## Revision
-
-Skill revision marker: v0.7.1 (this line changes with each release so an
-upgraded install is observable).
+Install or configure Claude Code or Codex CLI, or an Isabelle plugin for
+them; download Isabelle; write under `$HOME` on its own; register a
+project's own AutoCorrode copy as a component; nest the tooling clone inside
+a project checkout; install the coordination board.

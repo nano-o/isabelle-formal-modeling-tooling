@@ -325,6 +325,12 @@ server_status_pid() {
 # agent-board on PATH; its identity is the resolved real path. The tooling
 # never reads the board's descriptor or storage.
 
+# The agent-board interface this adapter supports; doctor requires the
+# executable's `version --json` to report it, with the doctor and project
+# capabilities.
+# shellcheck disable=SC2034
+AGENT_BOARD_INTERFACE=1
+
 # board_configured CHECKOUT_ROOT: whether the checkout uses agent-board.
 board_configured() {
   [[ -f "$1/agent-board.conf" ]]

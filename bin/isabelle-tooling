@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# The Isabelle tooling's command interface: `skills list|show`, the project
+# operations `init`, `sync`, `update` and `remove`, and `doctor`. Resolve this
+# file itself, so a symlink on PATH still finds the tooling checkout.
+set -euo pipefail
+TOOLING_ROOT="$(dirname "$(dirname "$(readlink -f -- "${BASH_SOURCE[0]}")")")"
+if [[ "${1:-}" == doctor ]]; then
+  shift
+  exec "$TOOLING_ROOT/scripts/doctor.sh" "$@"
+fi
+exec python3 -B "$TOOLING_ROOT/scripts/isabelle_tooling.py" "$@"

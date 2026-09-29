@@ -22,10 +22,12 @@ scripts/ic2.sh         project entry point: start/stop/name/wait/health + `isabe
 scripts/start-ic2.sh   native `ic2 server start` wrapper (base session, heap bound)
 scripts/stop-ic2.sh    native `ic2 server stop` wrapper
 scripts/build-ic2.sh   register the ic2 component and build its JAR
-scripts/new-project.sh create the descriptor and an empty session from templates/
+bin/isabelle-tooling   command interface: skills list/show, init/sync/update/remove, doctor
+scripts/isabelle_tooling.py  its implementation; project_files.py holds the rules shared with agent-board
+scripts/new-project.sh the session renderer behind `init`, reading templates/ from the pinned commit
 scripts/render-agents.sh  render the two host worker profiles from agents/
 scripts/release.sh     cut a release of the extension (release branch, tag, REVISION)
-extension/             the agent-host extension (skills, MCP declaration, worker profiles)
+extension/             skills, MCP declarations, worker profiles; project/ is what init installs
 scripts/doctor.sh      check the whole setup, print remediations, run nothing
 scripts/setup-ir-venv.sh      create the I/R Python environment (.venv/)
 scripts/install-iq-plugin.sh  build/install/stamp the I/Q jEdit plugin
@@ -73,7 +75,75 @@ own convention:
 mkdir -p ~/.config/isabelle-iq && (umask 077; openssl rand -hex 32 > ~/.config/isabelle-iq/auth-token)
 ```
 
+## Quick start: a new project
+
+With the tooling clone set up (above), `ISABELLE_TOOLING_ROOT` naming it in
+the shell the agent host starts from, and the clone checked out at `stable`,
+the validated commit, run this in the project before starting a host session
+there:
+
+```bash
+"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" init --session MyProject   # --formal-rel formal --source-rel . by default
+git add -A -- PATHS...                                                    # the paths init printed; it never stages or commits
+git commit -m "Add the Isabelle tooling"
+```
+
+`init` writes the descriptor `isabelle-tooling.conf` pinned at `stable`, an
+empty session under `formal/`, and the project files: the five skills under
+`.agents/skills/` (Claude Code sees them through `.claude/skills/`), the
+`ic2-prover` worker profiles in `.claude/agents/` and `.codex/agents/`, the
+`iq` MCP server in `.mcp.json` and in a managed block of
+`.codex/config.toml`, and a short block in the root `AGENTS.md` (with
+`CLAUDE.md` pointing at it) that sends agents to `formal/AGENTS.md` and the
+skills. Nothing in them names a machine path.
+
+Then trust the project in Codex CLI, or approve the `iq` server at the first
+Claude Code start, start a session and ask the agent to finish the setup:
+the `isabelle-setup` skill walks through what is left and runs `isabelle-tooling
+doctor`. The steps only you can do are the ones under "Setting up the tooling
+clone" that write under your home directory, and removing an installed
+Isabelle plugin, a user-level `iq` server or `ic2-prover` profile, which
+doctor names with the command to run.
+
+To coordinate several agents in the project, add agent-board, a separate
+tool with its own README: put `agent-board` on `PATH` (or set
+`AGENT_BOARD_COMMAND`), run `agent-board init` and optionally
+`agent-board install-hook`, and commit what it printed. The two installers
+own disjoint files and can run in either order; stage what the first printed
+before running the second.
+
+Later:
+
+- `isabelle-tooling sync --check` compares the project files with the pinned
+  commit, read-only; `sync` reinstalls exactly that commit's files and
+  refuses to overwrite a managed file someone edited.
+- `isabelle-tooling update REV` (a commit, or `stable`) is the only command
+  that moves the pin. The runtime clone must be at the pin: one clone serves
+  every project pinned to its commit, and doctor fails for a project on
+  another.
+- `isabelle-tooling remove` takes the project files and descriptor out,
+  leaving the session and the instruction files.
+- `isabelle-tooling skills list` and `skills show NAME` print the skills of
+  the project's pin (outside a project, of `stable`) from Git, never from a
+  working tree, and need no prover.
+- To develop the skills, work in a separate worktree of this repository and
+  run `isabelle-tooling sync --link --source <worktree>` in a project: the
+  installed skills become symlinks into it until `sync` restores the copies.
+  Link mode is never committed, and doctor fails on it without
+  `--allow-dirty`.
+
+A project whose descriptor predates project files adopts them with
+`isabelle-tooling update REV`, which refuses if any file it would install is
+already there. The contracts behind all of this are in
+[docs/delivery-contracts.md](docs/delivery-contracts.md).
+
 ## The agent-host extension
+
+**Superseded by project files** (the quick start above); this route is kept
+until the plugin and release machinery are removed, step 6 of the
+[delivery plan](docs/new-project-delivery-plan.md). Doctor now fails while
+either host has the plugin or its marketplace installed, since it would
+duplicate the project's files.
 
 The `extension/` directory is one package for both hosts: the shared
 `skills/` tree (`isabelle-setup` for binding a project, `isabelle-proving`
@@ -212,7 +282,7 @@ absolute path values, and any `..` component.
 format_version=1
 source_rel=.              # where the code under study lives, relative to the checkout root
 formal_rel=formal         # where ROOT/ROOTS and the theories live
-tooling_revision=<40-hex> # commit of this clone the artifacts were validated against
+tooling_revision=<40-hex> # the pin: the tooling commit whose project files are installed
 build_session=MyProject
 session_dir=MyProject     # relative to formal_rel
 ic2_base_session=HOL      # the logic ic2 starts from: never the project session
@@ -227,7 +297,9 @@ deliberately not the project session: when the project session is the
 server's logic, its theories are heap nodes and ic2 cannot expose their
 per-command diagnostics or `sorry` positions after edits. Optional keys
 `export_name`, `model_dispatch`, and `audit_collection` configure the model
-runner and the export check (below).
+runner and the export check (below). `tooling_revision` is optional in the
+format, but project files need it: `init` writes it and `update` is the only
+command that changes it, touching only that line.
 
 Every entry point resolves the project the same way: `--project-root DIR`
 reads the descriptor there; otherwise the nearest ancestor of the current
@@ -286,14 +358,16 @@ the project. Agents reach the live PIDE document through the I/Q MCP bridge,
 Agents that share a repository and its worktrees can coordinate through
 agent-board, a separate repository with its own CLI, skill and Claude Code
 digest hook; it used to live here as `scripts/board.sh`. A checkout opts
-in with `agent-board.conf` at its root. Installing that file and the
-board's project files comes with the project installers (see the
-[delivery plan](docs/new-project-delivery-plan.md)). When the checkout is
-configured and `agent-board` resolves (`AGENT_BOARD_COMMAND`, else `PATH`),
+in with `agent-board.conf` at its root, which `agent-board init` writes with
+the board's own project files; this tooling never installs the board. When
+the checkout is configured and `agent-board` resolves
+(`AGENT_BOARD_COMMAND`, else `PATH`),
 `ic2.sh start` and `stop` post a note as `ic2`, waiting at most five
 seconds for the board. The proof resources agents claim are theory files,
 proof branches and `token:jedit`, the human's I/Q session in the main
-worktree.
+worktree. A delegation brief's first line makes the proof worker
+independent (`Mode: independent. Handle: HANDLE.`) or supervised (`Mode:
+supervised by HANDLE.`); both worker profiles describe the two modes.
 
 ## Differential testing: the model runner and the export check
 
@@ -352,25 +426,31 @@ imported theory.
 ## Doctor
 
 ```bash
-scripts/doctor.sh [--project-root DIR] [--allow-dirty]
+"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" doctor [--project-root DIR] [--allow-dirty]
 ```
 
-Checks, in order: the descriptor and its roots; Isabelle and its version; the
-AutoCorrode submodule against the recorded gitlink; a clean tooling clone and
-submodule (modified scripts execute while `HEAD` still matches, so a dirty
-clone fails unless `--allow-dirty`, which passes and marks the report); the
-descriptor's `tooling_revision` against the clone's source revision; each
-host's installed extension `REVISION` against that revision, and the
-installed Codex worker profile against the hash the extension recorded;
-exactly one ic2
-component, registered from this clone, with its JAR built; systemd user
-scopes; the I/Q plugin stamp and token; and the I/R environment against the
-lock file. It prints remediation commands and never runs them.
+Checks, in order: the descriptor and its roots; that `ISABELLE_TOOLING_ROOT`
+names this clone; Isabelle and its version; the AutoCorrode submodule
+against the recorded gitlink; a clean tooling clone and submodule (modified
+scripts execute while `HEAD` still matches, so a dirty clone fails unless
+`--allow-dirty`, which passes and marks the report); the project files
+against the pin and the clone against the pin (`sync --check`; link mode is
+a note only with `--allow-dirty`); the host configuration of both hosts, read
+from `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when set, where an Isabelle plugin
+or its marketplace, a user-level `iq` MCP server or a user-level
+`ic2-prover` profile fails; exactly one ic2 component, registered from this
+clone, with its JAR built; systemd user scopes; the I/Q plugin stamp and
+token; the I/R environment against the lock file; and, when the project has
+`agent-board.conf`, the board: `agent-board` must resolve and report
+interface 1 with the `doctor` and `project` capabilities, and each check of
+its `doctor --json` is reported as `board: ID: MESSAGE`. It prints
+remediation commands and never runs them, and it writes nothing, in the
+project or in the clone.
 
 ## Validation
 
 ```bash
-make validate         # bash -n, ShellCheck, and the tests behind a mock isabelle
+make validate         # bash -n, ShellCheck, the tests behind a mock isabelle, the project-file tests
 make check-isabelle   # export-check fixtures and the model runner, against a real Isabelle
 ```
 

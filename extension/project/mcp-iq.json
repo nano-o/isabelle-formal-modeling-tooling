@@ -1,0 +1,2 @@
+{"command": "${ISABELLE_TOOLING_ROOT}/extension/bin/iq-bridge.sh",
+ "args": [], "env": {"IQ_MCP_BRIDGE_PORT": "8765"}}

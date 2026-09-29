@@ -690,8 +690,8 @@ session state; a passing file-copy check is not enough.
 
 ## Order of work
 
-Steps 1 to 3 were done on 2026-09-28 (see History); the others are
-pending.
+Steps 1 to 3 were done on 2026-09-28 and step 4 on 2026-09-29 (see
+History); the others are pending.
 
 1. **Settle the contracts.** Record the ownership, project files, owned
    entry and block formats, root instruction handling, executable

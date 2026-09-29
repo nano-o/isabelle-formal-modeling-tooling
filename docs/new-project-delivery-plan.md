@@ -871,8 +871,8 @@ Everything passed except as noted: installers, doctors and the command
 interface (71 checks on the bare repository, 70 on the demo, at `5642dd1`
 and again at `11a6bcb`); adoption; discovery of one copy of each skill,
 worker profile and `iq` server from the root and a subdirectory on both
-hosts; link mode with a fresh session seeing the edit; I/Q from Codex, and
-the connection from Claude Code; one digest route per host (the Claude
+hosts; link mode with a fresh session seeing the edit; I/Q from both hosts,
+Claude Code in auto mode included (after F1's fix); one digest route per host (the Claude
 hook at session start and exactly once per new post on the next prompt,
 the explicit digest on Codex); the ordinary task, resume, independent and
 supervised workers, two disjoint supervised workers, scope expansion on
@@ -881,9 +881,15 @@ a non-worker brief, on both hosts; and the worker smoke proof on both
 hosts, committed through the board protocol, with the Claude Code worker
 seeing no I/Q tools. Four findings:
 
-- F1: nothing said the agent must be allowed to read the I/Q token. Codex
-  needs no setup; Claude Code needs two allow rules, and its auto mode
-  refused the read even with the `Bash` rule. Documented in `7a4f065`.
+- F1: agents authenticated to I/Q by reading its token, which Claude
+  Code's auto mode refused even with an allow rule, and which put the token
+  into every transcript. `7a4f065` documented allow rules; `e25d1ef`
+  replaced them: AutoCorrode `dbd474f`, a local commit on the fork's
+  `6f69263`, lets the bridge authenticate every connection from the token
+  file that `extension/bin/iq-bridge.sh` names, so agents never see the
+  token and `authenticate` is no longer listed. The new AutoCorrode revision
+  makes doctor ask for the I/Q plugin to be reinstalled (its stamp records
+  the revision), though the plugin code is unchanged.
 - F2: a jEdit started without `scripts/launch_jedit.sh` has a random I/Q
   token, so every `authenticate` fails. The setup skill now has a section
   on starting jEdit (`7a4f065`).
@@ -896,9 +902,7 @@ seeing no I/Q tools. Four findings:
   worker did not call them. The profile no longer claims they are withheld
   (`11a6bcb`), and the contracts record the limitation.
 
-Not established: I/Q authentication from Claude Code, which needs the
-user's permission for the token read, and the plan's three runs per
-scenario. Observations: Codex encrypts spawn messages in its rollouts, so
+Not established: the plan's three runs per scenario. Observations: Codex encrypts spawn messages in its rollouts, so
 worker briefs could only be judged by behaviour, and it may give a worker
 the parent's whole conversation; its scope-expansion coordinator took the
 extra files itself, so no expansion request arose.

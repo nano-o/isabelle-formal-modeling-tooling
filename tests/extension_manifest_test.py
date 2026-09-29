@@ -41,24 +41,10 @@ claude_iq = claude_servers["iq"]
 assert isinstance(claude_iq, dict)
 assert "CLAUDE_PLUGIN_ROOT" in str(claude_iq.get("command"))
 
-# The coordination-board hooks are Claude Code only; Codex CLI has no hook
-# mechanism the extension relies on, and its agents read the board by
-# instruction from the isabelle-coordination skill.
-assert claude_manifest.get("hooks") == "./hooks/board-hooks.json"
+# The coordination board moved to agent-board, which installs its own
+# digest hook into a project; neither extension declares hooks.
+assert "hooks" not in claude_manifest
 assert "hooks" not in codex_manifest
-board_hooks = load("extension/hooks/board-hooks.json")
-assert set(board_hooks) == {"hooks"}
-declared_events = board_hooks["hooks"]
-assert isinstance(declared_events, dict)
-assert set(declared_events) == {"SessionStart", "UserPromptSubmit"}
-for event, groups in declared_events.items():
-    assert isinstance(groups, list) and groups, event
-    for group in groups:
-        assert isinstance(group, dict)
-        for hook in group.get("hooks", []):
-            assert hook.get("type") == "command", event
-            assert "CLAUDE_PLUGIN_ROOT" in str(hook.get("command")), event
-            assert "board-hook.sh" in str(hook.get("command")), event
-assert (REPO_ROOT / "extension/bin/board-hook.sh").exists()
+assert not (REPO_ROOT / "extension/hooks").exists()
 
 print("extension manifest host-parity checks passed")

@@ -58,13 +58,18 @@ SESSION="${PROJECT_CONF[ic2_base_session]}"
 SERVER_NAME="$(derive_server_name "$PROJECT_CHECKOUT_ROOT")"
 MAX_HEAP="${PROJECT_CONF[ic2_max_heap]:-}"
 
-# Best effort: when the repository has a coordination board (board.sh), leave
-# a server note on it so live servers are visible next to the agents that own
-# them. Never fails or delays the ic2 action; silent without a board.
+# Best effort: when the checkout uses agent-board and its executable
+# resolves, leave a note on the board so live servers are visible next to the
+# agents that own them, under the handle ic2 reserved for these notes. `post`
+# waits for the board's lock, so the timeout bounds the delay; the note never
+# changes the ic2 action's result. Silent without a board.
 board_note() {
+  local board
   [[ "$DRY_RUN" == false ]] || return 0
-  "$SCRIPT_DIR/board.sh" --project-root "$PROJECT_CHECKOUT_ROOT" --if-board --as ic2 \
-    post --kind server "$*" >/dev/null 2>&1 || true
+  board_configured "$PROJECT_CHECKOUT_ROOT" || return 0
+  board="$(resolve_agent_board)" || return 0
+  timeout 5 "$board" --project-root "$PROJECT_CHECKOUT_ROOT" --if-board --as ic2 \
+    post --kind note "$*" >/dev/null 2>&1 || true
 }
 
 reject_fixed_options() {

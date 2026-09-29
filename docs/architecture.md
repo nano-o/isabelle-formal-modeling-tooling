@@ -57,18 +57,9 @@ the descriptor format and the naming rule.
 
 ## Coordination
 
-`board.sh` keeps a repository's coordination board under its Git common
-directory (`<common dir>/isabelle-tooling/board`), the one directory every
-linked worktree shares without it being part of a working tree. Presence,
-posts and claims are plain files. `board.sh` delegates to the Python standard
-library implementation in `board.py`. A stable kernel `flock` serializes
-presence-dependent decisions, complete JSON claim snapshots, post sequence
-allocation/publication, and cursor updates. Digests emit one snapshot outside
-the lock and acknowledge only after successful output. Format 2 requires an
-explicit migration with old writers stopped; legacy cursors replay.
-Shared `pre-commit` and `reference-transaction` hooks check staged paths and
-prepared ref updates. Editing, editor tokens, and branch rename destinations
-still need cooperative pre-operation guards; ref rejection does not undo
-index or worktree changes. `ic2.sh` posts server notes, and the extension's
-Claude Code hooks inject the digest into a session. See
-[coordination-board.md](coordination-board.md).
+Coordination between agents is agent-board, a separate repository. The
+tooling's only part is optional: when `agent-board.conf` is at the checkout
+root and the executable resolves, `ic2.sh` posts server notes through it
+under a five-second timeout, and the proving skill and worker profiles name
+the proof resources to claim. The tooling never reads the board's
+descriptor or storage.

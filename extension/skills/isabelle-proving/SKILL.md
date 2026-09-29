@@ -207,9 +207,13 @@ delegated worktree concurrently, reviews the diff and validation report on
 return, verifies the worker stopped its server, and reports worktree path,
 branch, and commit. It never merges, cherry-picks, or removes the worktree or
 branch unless asked. Worktrees no longer need a submodule populated: the
-tooling and AutoCorrode live in the tooling clone. When the repository has a
-coordination board (`isabelle-coordination` skill), the coordinator
-registers with `hello` and creates the branch/worktree. The worker claims
+tooling and AutoCorrode live in the tooling clone. When the checkout uses
+agent-board (`agent-board.conf` at its root; the `agent-coordination`
+skill), the coordinator registers with `hello` and creates the
+branch/worktree. The proof resources on the board are theory files, proof
+branches (`refs/heads/<branch>`) and `token:jedit`, the human's I/Q editing
+session in the main worktree, which an agent claims before editing through
+I/Q there. The worker claims
 its own branch and files under its own handle; the coordinator releases any
 setup claim before delegation and does not retain ownership of that branch.
 The worker posts its handoff before releasing claims and saying `bye`, and

@@ -80,19 +80,20 @@ authorizes it.
 
 ## The coordination board
 
-When the repository has a coordination board (from the assigned worktree,
-`"$ISABELLE_TOOLING_ROOT/scripts/board.sh" who` prints agents rather than
-"no board yet"), use it as the `isabelle-coordination` skill describes, with
-the worktree's name as your handle: `hello --task` naming the proof target
-when you start; `claim --reason "..."` the theories you edit and your branch
+When the checkout has `agent-board.conf` at its root, it coordinates
+through agent-board: run `"${AGENT_BOARD_COMMAND:-agent-board}"` as the
+`agent-coordination` skill describes, with the worktree's name as your
+handle: `hello --task` naming the proof target when you start; `claim
+--reason "..."` the theories you edit and your branch
 (`refs/heads/<branch>`) under your own handle. The coordinator has created
 the branch/worktree and released any setup claim before delegation. If a
 foreign claim remains, report the conflict rather than borrowing its handle
-or forcing a takeover. Commit as `ISABELLE_BOARD_AGENT=<your-handle>` when
+or forcing a takeover. Commit as `AGENT_BOARD_AGENT=<your-handle>` when
 identity inference is ambiguous. Post `--kind handoff` with worktree,
 branch, commit and validation results before releasing your claims with
-`bye`; also give the coordinator a complete final message. Do not create a board
-where none exists; that is the coordinator's decision.
+`bye`; also give the coordinator a complete final message. `ic2.sh start`
+and `stop` post their own notes as `ic2`. Without `agent-board.conf`, do
+not use a board.
 
 ## Before returning
 

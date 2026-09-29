@@ -690,7 +690,8 @@ session state; a passing file-copy check is not enough.
 
 ## Order of work
 
-Step 1 was done on 2026-09-28; the others are pending.
+Steps 1 and 2 were done on 2026-09-28 (see History); the others are
+pending.
 
 1. **Settle the contracts.** Record the ownership, project files, owned
    entry and block formats, root instruction handling, executable
@@ -787,3 +788,27 @@ check the board's state format, since it never reads board storage. The
 hooks-directory finding was partly mistaken: `git rev-parse --git-path
 hooks` already follows `core.hooksPath`. It became the rule that guards are
 installed only inside the Git directory.
+
+**Step 2, 2026-09-28.** agent-board lives in `~/Documents/agent-board`, a
+local repository without a remote: an import commit holding the source
+files unchanged (`f9aacb8`, recording provenance), the standalone
+adaptation with its tests (`b836c94`), and the Claude hook, generic skill
+and documentation (`b2ba4b2`), with the contracts' board part copied to
+its `docs/project-integration.md`. Its 36 regressions (27 kept, 9 new),
+the CLI suite and the hook test pass. This repository's candidate is the
+`delivery` branch, in its own worktree, with the board removed, the ic2
+notifier adapter and its test, doctor's board section dropped, and the
+docs, profiles and proving skill updated; the runtime clone stays on
+`main` at the pin. Three details differ from the order of work above:
+
+- `install-hook` already refuses a hooks directory outside the Git common
+  directory and writes both guards or neither, since that is the board's
+  own code and its tests belong with it; board doctor still comes in
+  step 3.
+- `version` reports an empty capability list, since `doctor` and the
+  project verbs do not exist yet; step 3 adds `doctor` and `project` with
+  them.
+- The notifier's five-second bound is tested with a board command that
+  blocks, standing in for `post` waiting on a held lock, so the Isabelle
+  tests need no agent-board checkout; the board repository tests its own
+  Claude hook with the lock really held.

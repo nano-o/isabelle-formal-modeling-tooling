@@ -348,7 +348,11 @@ The server name `iq` is fixed. The Claude worker profile's
 `disallowedTools: mcp__iq` matches exactly the tools of a server named
 `iq`. That rule does not match a plugin-provided server, whose tools are
 named `mcp__plugin_<plugin>_iq__*` (documented; to confirm in the fixtures).
-The Codex profile disables `iq` by the same name.
+The Codex profile disables `iq` by the same name, but Codex CLI 0.155 does
+not honour that for a spawned agent: the step-4 fixtures found the main
+session's I/Q tools listed to the worker, spawned with or without the
+parent's conversation. There the worker's instructions, which forbid every
+I/Q call, are the only barrier.
 
 **Board adapter.** Coordination is configured when `agent-board.conf`
 exists at the checkout root. The adapter never reads `board_revision`.

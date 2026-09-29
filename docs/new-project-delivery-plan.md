@@ -850,3 +850,55 @@ list:
   runtime checkout at the candidate, which means either moving that
   registration for the fixtures or giving them their own Isabelle user
   home.
+
+**Step 4, 2026-09-29: the fixtures.** By the user's choice the existing
+codebase was a clone of stellar-core-internal,
+`~/Documents/formal-offer-exchange-demo` (branch `formal-demo`, both
+components installed, session `Demo` holding the offer-exchange
+`bigDivideUnsigned` demo theory), beside a bare `git init` repository and,
+for adoption, a snapshot of the offer-exchange checkout at `319fed13e0`.
+The runtime was a detached worktree of this repository at the candidate,
+with its own Isabelle user home (`USER_HOME`, so the one registered ic2 was
+the candidate's and the user's registration stayed untouched) and fresh
+host configuration roots the user logged in to. Claude Code 2.1.284
+(claude-opus-5-5, auto permission mode) and Codex CLI 0.155.1 (gpt-6-astra
+at medium effort, workspace-write with automatic review) ran headless in
+scratch clones; each behavioural scenario ran once per host, the user's
+choice, with the ones confounded by a wrong brief or a permission denial
+rerun.
+
+Everything passed except as noted: installers, doctors and the command
+interface (71 checks on the bare repository, 70 on the demo, at `5642dd1`
+and again at `11a6bcb`); adoption; discovery of one copy of each skill,
+worker profile and `iq` server from the root and a subdirectory on both
+hosts; link mode with a fresh session seeing the edit; I/Q from Codex, and
+the connection from Claude Code; one digest route per host (the Claude
+hook at session start and exactly once per new post on the next prompt,
+the explicit digest on Codex); the ordinary task, resume, independent and
+supervised workers, two disjoint supervised workers, scope expansion on
+Claude Code, an unreachable coordinator, transfer to independent mode and
+a non-worker brief, on both hosts; and the worker smoke proof on both
+hosts, committed through the board protocol, with the Claude Code worker
+seeing no I/Q tools. Four findings:
+
+- F1: nothing said the agent must be allowed to read the I/Q token. Codex
+  needs no setup; Claude Code needs two allow rules, and its auto mode
+  refused the read even with the `Bash` rule. Documented in `7a4f065`.
+- F2: a jEdit started without `scripts/launch_jedit.sh` has a random I/Q
+  token, so every `authenticate` fails. The setup skill now has a section
+  on starting jEdit (`7a4f065`).
+- F3: ic2 server names used the whole checkout basename, so a long
+  worktree name or Isabelle home pushed the socket past ic2's 100 bytes and
+  the worker could not start its prover. Names are capped at 37 characters,
+  and doctor fails on a home too long for any socket (`7a4f065`).
+- F4: Codex CLI 0.155 lists the main session's I/Q tools to a spawned
+  `ic2_prover` despite the profile's `enabled = false`, forked or not; the
+  worker did not call them. The profile no longer claims they are withheld
+  (`11a6bcb`), and the contracts record the limitation.
+
+Not established: I/Q authentication from Claude Code, which needs the
+user's permission for the token read, and the plan's three runs per
+scenario. Observations: Codex encrypts spawn messages in its rollouts, so
+worker briefs could only be judged by behaviour, and it may give a worker
+the parent's whole conversation; its scope-expansion coordinator took the
+extra files itself, so no expansion request arose.

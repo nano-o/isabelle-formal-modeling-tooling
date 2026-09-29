@@ -76,18 +76,17 @@ says so.
   stamp under `$ISABELLE_HOME_USER/jedit/jars/`. Undo: delete those two files.
 - **Create the I/Q token** at `~/.config/isabelle-iq/auth-token`, mode 600:
   `mkdir -p ~/.config/isabelle-iq && (umask 077; openssl rand -hex 32 >
-  ~/.config/isabelle-iq/auth-token)`. Never print its contents.
+  ~/.config/isabelle-iq/auth-token)`. The jEdit launcher and the project's
+  `iq` server read it; agents never do, and never print it.
 - **Approve the project's configuration once per host.** Codex CLI reads
   `.codex/config.toml` only in a trusted project; Claude Code asks to approve
   the `iq` server from `.mcp.json` at the first start (or the user lists it
   in `enabledMcpjsonServers` in `.claude/settings.local.json`).
-- **Let the main session read the I/Q token.** The agent passes the token to
-  I/Q's `authenticate` call. Codex CLI reads it inside its sandbox with no
-  setup. Claude Code asks each time, unless `permissions.allow` in
-  `~/.claude/settings.json` lists `Bash(cat ~/.config/isabelle-iq/auth-token)`
-  and `Read(~/.config/isabelle-iq/auth-token)`. Its auto mode can refuse the
-  read even with those rules; then use I/Q from another permission mode. Undo: remove
-  the two rules.
+
+Doctor fails while an Isabelle formal-modeling plugin or its marketplace is
+installed in either host, or a user-level `iq` server or `ic2-prover`
+profile exists: each would duplicate a project file. It prints the command
+that removes each one; show it to the user.
 
 ## 5. Starting jEdit
 
@@ -99,13 +98,10 @@ For the jEdit workflow, start jEdit through the tooling, never with a plain
 ```
 
 The launcher passes I/Q the token from `~/.config/isabelle-iq/auth-token` in
-`IQ_AUTH_TOKEN` and limits it to the formal root. Without that variable, I/Q
-generates a random token, and every `authenticate` call fails.
-
-Doctor fails while an Isabelle formal-modeling plugin or its marketplace is
-installed in either host, or a user-level `iq` server or `ic2-prover`
-profile exists: each would duplicate a project file. It prints the command
-that removes each one; show it to the user.
+`IQ_AUTH_TOKEN` and limits it to the formal root; the project's `iq` server
+authenticates with the same file. A jEdit started without the launcher has a
+random token, and every I/Q call then fails with "I/Q did not accept the
+token".
 
 ## 6. The project files
 

@@ -70,11 +70,12 @@ cd <worktree>
 
 ## Isabelle/IQ and the I/R REPL
 
-- Authenticate the `iq` MCP server with the token file
-  (`~/.config/isabelle-iq/auth-token`) before any other call, and again after
-  jEdit restarts or the bridge reconnects. Never print the token.
-- I/Q may be a deferred MCP tool: search the tool registry for `authenticate`
-  and `list_files` under the `iq` server before concluding it is absent. Do
+- The `iq` server authenticates by itself, including after jEdit restarts:
+  never read or print the I/Q token. A call failing with "I/Q did not accept
+  the token" means jEdit was not started with the tooling's
+  `scripts/launch_jedit.sh`; tell the human.
+- I/Q may be a deferred MCP tool: search the tool registry for `list_files`
+  under the `iq` server before concluding it is absent. Do
   not use `ps`, `pgrep`, or `ss` as evidence that jEdit or I/Q is missing; the
   agent shell may run in isolated PID and network namespaces.
 - In a shared session, agree who owns a passage before editing it; after an

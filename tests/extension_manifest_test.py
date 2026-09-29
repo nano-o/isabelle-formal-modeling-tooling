@@ -70,4 +70,29 @@ codex_block = (REPO_ROOT / "extension/project/codex-config.toml").read_text(enco
 assert codex_block.splitlines()[0].startswith("# Managed by isabelle-tooling")
 assert tomllib.loads(codex_block) == {"mcp_servers": {"iq": codex_iq}}
 
+# The bridge wrapper hands the bridge the token file launch_jedit.sh uses, so
+# the project's iq server authenticates without the agent reading the token.
+import os
+import subprocess
+import tempfile
+
+with tempfile.TemporaryDirectory() as tmp:
+    fake_bridge = Path(tmp) / "AutoCorrode/iq/iq_bridge.py"
+    fake_bridge.parent.mkdir(parents=True)
+    fake_bridge.write_text("import os; print(os.environ['IQ_TOKEN_FILE'])\n", encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k not in ("IQ_TOKEN_FILE", "XDG_CONFIG_HOME")}
+    env.update(ISABELLE_TOOLING_ROOT=tmp, HOME="/home/someone")
+
+    def token_file(**extra: str) -> str:
+        return subprocess.run([str(REPO_ROOT / "extension/bin/iq-bridge.sh")], env={**env, **extra},
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    assert token_file() == "/home/someone/.config/isabelle-iq/auth-token", token_file()
+    assert token_file(XDG_CONFIG_HOME="/xdg") == "/xdg/isabelle-iq/auth-token"
+    assert token_file(IQ_TOKEN_FILE="/elsewhere/token") == "/elsewhere/token"
+launcher = (REPO_ROOT / "scripts/launch_jedit.sh").read_text(encoding="utf-8")
+assert 'IQ_TOKEN_FILE="${IQ_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/isabelle-iq/auth-token}"' in launcher
+for name in ("IQ_TOKEN_FILE", "XDG_CONFIG_HOME"):
+    assert name in codex_iq.get("env_vars", []), name
+
 print("extension manifest host-parity checks passed")

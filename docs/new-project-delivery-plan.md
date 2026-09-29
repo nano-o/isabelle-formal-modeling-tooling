@@ -12,7 +12,10 @@ did not honour a project- or CLI-layer `[plugins."…"] enabled = false`
 uninstalling was the only dependable switch. Recheck that in the fixtures;
 the durable reasons for vendoring, per-project provenance and a simpler
 authoring loop, do not depend on it. The September 3 review covers the
-vendoring proposal, not the board. No step below has been executed.
+vendoring proposal, not the board. The interfaces both installers, both
+doctors and the fixtures share are fixed in
+[delivery-contracts.md](delivery-contracts.md) (step 1); where this plan and
+that document disagree, the contracts win.
 
 This plan was moved on 2026-09-28 from the last section of
 `formal/docs/isabelle-tooling-extraction-plan.md` in the offer-exchange
@@ -33,23 +36,25 @@ in a new project:
 
 Done means: starting from a new Git repository, with only the two clones, the
 pinned Isabelle release and one agent host installed, a user or their agent
-runs `isabelle-tooling init`, `agent-board setup`, or both, starts a fresh
+runs `isabelle-tooling init`, `agent-board init`, or both, starts a fresh
 host session, and has working skills, I/Q, the proof worker and, with the
 board, coordination. This holds on Claude Code and on Codex CLI, with each
 repository pinned at a `stable` commit that passed the new-project fixtures
 below.
 
-Both repositories stay local: no remote, publication, CI or marketplace is
-part of this plan. The offer-exchange checkout adopts the result at the
-end, like any other project; it is no longer the constraint the plan is
-organized around. Other checkouts with a descriptor, such as
-`~/code/thruput-hackathon`, are
+Both repositories stay local: nothing is pushed, published, run in CI or
+offered through a marketplace as part of this plan. The tooling clone keeps
+its existing `origin` untouched; `agent-board` gets no remote. The
+offer-exchange checkout adopts the result at the end, like any other
+project; it is no longer the constraint the plan is organized around. Other
+checkouts with a descriptor, such as `~/code/thruput-hackathon`, are
 temporary experiments and are not migrated.
 
 ## Starting point
 
-Tooling `main` at `5b0f349` contains the board implementation and its
-concurrency fixes, six skills (including `isabelle-coordination`), Claude
+Tooling `main` at `5b0f349` (followed only by documentation commits,
+including this plan) contains the board implementation and its concurrency
+fixes, six skills (including `isabelle-coordination`), Claude
 digest hooks and Isabelle-specific board integration. The `release` branch
 still names v0.7.1. The separate `feedback-thruput-erc20` branch holds
 unmerged feedback and instruction work: preserve it and account for it when
@@ -70,7 +75,12 @@ the Claude Code plugin: the working-tree manifest on `main` already declares
 the board hooks and `isabelle-coordination` under the unchanged version
 0.7.1, so a refresh would deploy the board through the plugin. Implement in
 separate candidate checkouts, and keep the clone that `ISABELLE_TOOLING_ROOT`
-names, and the registered runtime paths, usable until then.
+names, and the registered runtime paths, usable until then. The plugin's
+Claude worker profile disallows `mcp__iq`, which by the Claude Code
+documentation matches only a server named `iq`, not the plugin's
+`mcp__plugin_isabelle-formal-modeling_iq__*` tools. Until step 5 the
+worker's instructions may be the only thing keeping it off the human's
+jEdit; the project `.mcp.json` server named `iq` closes that gap.
 
 **Upstream, 2026-09-28.** AutoCorrode `main` is
 [`761256a`](https://github.com/awslabs/AutoCorrode/commit/761256a2dca62754b25477ae7dae00b31e236309),
@@ -164,10 +174,12 @@ state versions, the executable's commit, and whether its checkout is clean;
 and a read-only `doctor` covering the storage format, the installed Git
 guards and the executable, with machine-readable output for callers.
 Isabelle's doctor calls it instead of parsing the board's directories and
-hook markers. The Isabelle adapter records the CLI and state versions it is
-compatible with. Resolve the executable from `AGENT_BOARD_COMMAND` (one path,
-not shell text), else `agent-board` on `PATH`; machine paths stay in
-host-local configuration or the environment, never in committed files. A
+hook markers. The Isabelle adapter records the interface version and the
+capabilities it needs; it never reads board storage, so the state version
+is the board's own concern. Resolve the executable from
+`AGENT_BOARD_COMMAND` (one path, not shell text), else `agent-board` on
+`PATH`; machine paths stay in host-local configuration or the environment,
+never in committed files. A
 configured but missing, mismatched or broken board fails doctor; a project
 without board configuration needs no executable. The ic2 notifier stays
 best-effort and never masks a prover result.
@@ -180,13 +192,14 @@ projects use at `stable` and develop in a separate worktree. Git guards
 record the executable's absolute path when installed; board doctor fails
 when that path no longer matches the current resolution.
 
-**Project operations.** `agent-board setup [--revision REV]` bootstraps a
+**Project operations.** `agent-board init [--revision REV]` bootstraps a
 project before the host session starts: it writes `agent-board.conf` with
 `board_revision=<full commit>` (default: the commit `stable` resolves to),
 installs the board's project files (see "Project files") and refuses an
-existing `agent-board.conf`. Then `sync`, `sync --link`, `sync --check` and
-`update REV` behave as the Isabelle operations below. Setup does not register
-an agent and does not install Git guards; `install-hook` does, explicitly,
+existing `agent-board.conf`. Then `sync`, `sync --link`, `sync --check`,
+`update REV` and `remove` behave as the Isabelle operations below. `init`
+does not register an agent and does not install Git guards; `install-hook`
+does, explicitly,
 chaining a foreign `pre-commit` or `reference-transaction` hook as the
 current code does. Runtime board data stays under Git's common directory,
 outside the inventory. None of these commands exists yet.
@@ -333,12 +346,16 @@ files do. None of these commands exists yet.
   commit `stable` resolves to (`--revision` overrides). Refuse an existing
   descriptor.
 
-`isabelle-tooling sync`, `sync --link`, `sync --check`
+`isabelle-tooling sync`, `sync --link [--source DIR]`, `sync --check`
 : Run the synchronizer's `copy`, `link` or read-only `check`.
 
 `isabelle-tooling update REV`
 : Change the pin and the installed files together; `update stable` moves a
   project to the current validated commit.
+
+`isabelle-tooling remove`
+: Delete the unchanged integration files, entries and blocks, the inventory
+  and the descriptor, leaving the session and the root instruction files.
 
 `isabelle-tooling doctor`
 : Run the complete setup, integration and runtime checks.
@@ -382,10 +399,11 @@ installer rules below.
 
 `link`
 : The development loop. Replaces the managed skill copies with symlinks into
-  the tooling clone's working tree, so an edit is visible after a reload
-  with no reinstall. Records the mode in the inventory, dirties the worktree
-  on purpose and touches nothing unmanaged; `copy` restores the committed
-  state.
+  a development worktree of the tooling (`--source`, by default the clone
+  `ISABELLE_TOOLING_ROOT` names, which should stay clean at the pin), so an
+  edit is visible after a reload with no reinstall. Records the mode in the
+  inventory, dirties the worktree on purpose and touches nothing unmanaged;
+  `copy` restores the committed state.
 
 `check`
 : Verifies paths, contents, modes, symlink targets, missing and obsolete
@@ -416,19 +434,17 @@ board repository.
 **Across the three layouts of the extraction plan's §1** (A: the tooling as
 a submodule of `X`; B: external tooling, this plan's default; C: a separate
 assurance repository holding the formal artifacts). Hosts discover skills,
-agents and MCP
-declarations only at fixed paths relative to the repository they run in, so
-the managed files live at the checkout root that holds the descriptor: `X`'s
-root under A and B, the assurance repository's root under C, with the host
-started anywhere inside that checkout. Under C, `X` holds only the adapter
-and receives nothing from the extension. Under A the extension is already
-in-tree in the submodule, so skills and agents are committed as relative
-symlinks into `<submodule>/extension/...` instead of copies; shared
-configuration entries are still merged, never whole-file symlinks. The
-gitlink is the pin, and `update` moves it and `tooling_revision` together;
-`check` verifies the symlinks and the gitlink. Under A the submodule must be
-populated in every worktree before a host starts, and committed symlinks
-exclude Windows, which is already deferred.
+agents and MCP declarations only at fixed paths relative to the repository
+they run in, so the managed files live at the checkout root that holds the
+descriptor: `X`'s root under A and B, the assurance repository's root under
+C, with the host started anywhere inside that checkout. Under C, `X` holds
+only the adapter and receives nothing from the extension. Under A the
+submodule is simply the runtime checkout that `ISABELLE_TOOLING_ROOT` names,
+and the project still receives copies, so all three layouts install the
+same way. A delivery mode that commits symlinks into the submodule and
+treats the gitlink as the pin was considered and cut on 2026-09-28: it
+needed its own inventory, preflight, doctor and failure rules, and no
+project uses layout A.
 
 **Verified host facts** (documentation unless stated otherwise):
 
@@ -487,10 +503,10 @@ blocks, and the skill directories, in separate entries; a project may keep
 unrelated skills there (the offer-exchange checkout has many). The
 inventory records the revision, hashes of wholly managed files and
 canonical values of owned entries and blocks. Machine-specific paths and
-credentials stay out of committed files. Git hooks and board runtime data are runtime resources,
-checked by board doctor, not vendored. Because the files are committed,
-every clone and worktree has them without a sync, though running them still
-needs the matching runtime and host setup.
+credentials stay out of committed files. Git hooks and board runtime data
+are runtime resources, checked by board doctor, not vendored. Because the
+files are committed, every clone and worktree has them without a sync,
+though running them still needs the matching runtime and host setup.
 
 **Owned entries and blocks.** In a file shared with the project, an
 installer owns only its entry or block, compares it with the inventory
@@ -517,8 +533,8 @@ at the repository root does not load; the offer-exchange checkout works
 only because of a
 hand-written root `AGENTS.md` pointing there. `init` therefore adds an
 Isabelle block to the root instruction files that points to
-`<formal_rel>/AGENTS.md` and names the skills, and board setup adds its own
-block. Both resolve symlinks first: when `CLAUDE.md` resolves to
+`<formal_rel>/AGENTS.md` and names the skills, and `agent-board init` adds
+its own block. Both resolve symlinks first: when `CLAUDE.md` resolves to
 `AGENTS.md`, as in the offer-exchange checkout, one block serves both hosts
 and is
 recorded once. When neither file exists, create `AGENTS.md` and a
@@ -527,10 +543,14 @@ under `<formal_rel>/`. When `CLAUDE.md` is a separate regular file, write
 the block to both.
 
 **Git is the transaction log.** Every managed file is committed, so no
-rollback record, in-progress marker or lock is needed. An installer refuses
-to start while any path it would modify has uncommitted changes (in a
-repository without commits, while any of them exists), other than changes
-its own `link` recorded. It
+rollback record or in-progress marker is needed; a per-worktree installer
+lock only keeps the two installers from interleaving writes to the files
+they share. The index is the
+checkpoint: an installer refuses to start while any path it would modify
+has unstaged changes or is untracked, other than changes its own `link`
+recorded. Staged changes are accepted, so a new repository stages what one
+`init` printed before running the other, without an intermediate commit.
+An installer never stages or commits. It
 stages the complete result in a temporary directory, validates it,
 rechecks each destination immediately before replacing it, and writes the
 descriptor last. If writing fails, it names the paths it touched and prints
@@ -541,8 +561,9 @@ outside the repository, which is why guards are installed only by the
 explicit `install-hook`.
 
 **`stable` refs.** Each repository keeps a local `stable` branch,
-fast-forwarded only to a commit at which the new-project fixtures passed,
-with the outcome recorded in that repository. `init` and `setup` pin the
+fast-forwarded only to a validation record commit: the commit at which the
+new-project fixtures passed, plus one appended entry in
+`docs/validation.md` recording the outcome. Both `init` commands pin the
 commit `stable` resolves to, `--revision` overrides it (the fixtures use this
 for candidates), and `update stable` moves a project forward. `stable`
 replaces the `release` branch as the marker of a validated commit; nothing
@@ -567,7 +588,8 @@ shows, described in the extraction plan's §2), a new project runs:
 
 ```sh
 "$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" init --session NAME
-~/Documents/agent-board/bin/agent-board setup          # optional
+git add -- PATHS...                                    # as init printed
+~/Documents/agent-board/bin/agent-board init           # optional
 ~/Documents/agent-board/bin/agent-board install-hook   # optional
 ```
 
@@ -576,8 +598,10 @@ approves the `iq` server at the first Claude Code start, and starts a
 session in which
 `isabelle-setup` finishes the work. `skills show isabelle-setup` is readable
 guidance before installation, not a substitute for it. Each README's quick
-start uses explicit paths, so adding the commands to `PATH` is optional,
-shows the Isabelle-only path first with coordination as an optional step,
+start uses explicit paths for installation, shows the Isabelle-only path
+first with coordination as an optional step, puts `agent-board` on `PATH`
+(or sets `AGENT_BOARD_COMMAND`) for projects that use the board, since its
+hook, the ic2 notifier and agents resolve it that way,
 invites users to have their agent run setup and checks, and gives exact
 commands for what only the user can do.
 
@@ -590,7 +614,7 @@ Codex CLI, with isolated host configuration roots, starting sessions both at
 the repository root and in a subdirectory. Board-only runs have no Isabelle
 descriptor, installation or `ISABELLE_TOOLING_ROOT`; Isabelle-only runs have
 no board executable. Combined runs also cover independent pin mismatches and
-removing one component while keeping the other. Record both source
+`remove` of one component while keeping the other. Record both source
 revisions, the CLI compatibility version, host versions and outcomes. Run
 Codex fixtures at medium reasoning effort, in the background, with stdin
 closed.
@@ -616,9 +640,16 @@ Installer tests cover unrelated MCP servers, TOML content outside the
 managed block, unmanaged collisions, edited owned entries, blocks and files,
 obsolete entries, missing pinned commits, runtime mismatch, a pre-existing
 root `AGENTS.md`, `CLAUDE.md` as a symlink and as a regular file, refusal
-with uncommitted managed paths, and an injected failure while writing: the
-printed command restores the tree, and `check` and doctor fail until it
-does.
+with unstaged or untracked managed paths, two installers started at once,
+destinations on another filesystem than the temporary directory, and an
+injected failure after each publication step, including during Isabelle
+`init`'s session scaffold: the printed commands restore the tree, `check`
+and doctor fail until they do, and a retry then succeeds. Adoption runs
+`update` against a snapshot of the offer-exchange checkout (a linked
+worktree at its current commit), with its own `.claude/skills/`, root
+`AGENTS.md` and `CLAUDE.md` symlink. Both doctors are checked to be
+read-only: `git status` and a file listing of the project and the runtime
+checkouts are the same before and after.
 
 For the board, run the original shell tests and behavioural regressions,
 renamed with the code, before changing behaviour. Delete the three
@@ -627,9 +658,18 @@ that uses the bare `jedit` shorthand for `token:jedit`; the remaining 28
 must pass unchanged. Add coverage for executable resolution, shared state
 and lock identity across linked worktrees, both Git guards under real Git
 operations, foreign-hook chaining, a commit in another worktree with an
-explicit handle, and a guard whose recorded executable no longer matches.
-Verify exactly one digest route and one coordination skill in fresh host
-sessions, using the explicit digest workflow on Codex.
+explicit handle, a guard whose recorded executable no longer matches, a
+failure between the two guard writes, a `core.hooksPath` outside the Git
+directory, the incomplete-state cases, and the ic2 notifier returning
+within its timeout while another process holds the board lock. Verify
+exactly one digest route and one coordination skill in fresh host sessions,
+using the explicit digest workflow on Codex.
+
+In fresh sessions started at the root and in a subdirectory, list the
+worker profiles and tools each host offers, and have the proof worker
+attempt an I/Q call, which must be unavailable to it. Exactly one worker
+definition and one main-session `iq` server may be visible, so that a
+passing smoke proof cannot hide a user-level or plugin duplicate.
 
 Behavioural scenarios, on both hosts: an ordinary editing task that does
 not mention the board, where the agent should consult the skill and board
@@ -650,52 +690,61 @@ session state; a passing file-copy check is not enough.
 
 ## Order of work
 
-All steps are pending.
+Step 1 was done on 2026-09-28; the others are pending.
 
 1. **Settle the contracts.** Record the ownership, project files, owned
    entry and block formats, root instruction handling, executable
    resolution, CLI compatibility version, `stable` refs, the renames and
-   removals, and the delegation modes in both repositories' work plans. Have
-   this plan design-reviewed, as the vendoring proposal was. Recheck the
+   removals, and the delegation modes in
+   [delivery-contracts.md](delivery-contracts.md); step 2 copies its shared
+   rules and board part into the new repository. Have this plan and the
+   contracts design-reviewed, as the vendoring proposal was. Recheck the
    branches and upstream, preserve unrelated work including the feedback
    branch, and keep the AutoCorrode and Isabelle pins.
 2. **Extract the board.** Create `~/Documents/agent-board`, move the core
    code, tests, docs, generic skill and host adapters, and record provenance
    and licenses. Keep the on-disk format, locking and verbs other than
    `migrate`; apply "No compatibility layer", including removing the board
-   from the Isabelle source on a candidate branch. Add the version and
-   doctor commands and the thin Isabelle adapters. Gate: the board
-   regressions and adapter tests pass, with no Isabelle dependency and no
-   installed setup changed. Commit the two repositories separately.
+   from the Isabelle source on a candidate branch, and replace the legacy
+   detection with the incomplete-state rule. Add `version` and the ic2
+   notifier adapter, and drop Isabelle doctor's board section, which parses
+   the old directories and markers. Board doctor and the doctor adapter
+   depend on the project files and come in step 3. Gate: the board
+   regressions, the corruption cases and the notifier tests pass, with no
+   Isabelle dependency and no installed setup changed. Commit the two
+   repositories separately.
 3. **Build project-local delivery for both.** Implement `bin/isabelle-tooling`,
-   the templates and `sync-extension.sh`, and the board's setup, sync,
-   update, check and doctor commands; the root instruction blocks; the
-   revised doctors, README quick starts, setup skill and worker
-   instructions; and, in the board, the smaller skill and bounded digests
-   with their cursor and delivery tests. Keep the plugin entry points until
+   the templates and manifests, `sync-extension.sh` and the `init`
+   renderer, and the board's init, sync, update, remove, check and doctor
+   commands; the installer lock, the root instruction blocks and the
+   adoption path; the revised doctors and the board doctor adapter, README
+   quick starts, setup skill and worker instructions; and, in the board,
+   the smaller skill and bounded digests with their cursor and delivery
+   tests. Keep the plugin entry points until
    step 6. Gate: the installer, command-interface and board tests above
    pass. Commit candidate revisions of both repositories.
 4. **Validate on new projects and mark `stable`.** Run the new-project
    fixtures on both hosts against the candidates. Resolve every failure,
-   then create `stable` in both repositories at the validated commits and
-   record the outcomes in both repositories.
-5. **Adopt the result in the offer-exchange checkout and retire the
-   plugins.** Close host
-   sessions. Uninstall both hosts' Isabelle extensions, remove the Claude
-   Code directory marketplace and the Codex `isabelle-formal-modeling-dev`
-   marketplace, and move `~/.codex/agents/ic2_prover.toml` aside, all before
-   the first verification session, so no duplicate is present while the
-   project copies are tested. Check out `stable` in the clone
-   `ISABELLE_TOOLING_ROOT` names, run `isabelle-tooling update stable` in the
-   offer-exchange checkout,
-   and, if this project uses coordination, `agent-board setup` and
-   `install-hook`. Keep `enabledMcpjsonServers` for the root `.mcp.json`.
-   Start fresh sessions and verify doctor, I/Q, the project proof worker and,
-   with the board, digest delivery and the claim and ref guards from a
-   linked worktree; then commit the descriptors, inventories and project
-   files and delete the moved-aside profile. If this fails, restore the
-   project files with Git and reinstall the 0.7.1 extensions from the
-   tooling history before resuming work.
+   then make each repository's validation record commit on `main`, naming
+   the candidates of both, rerun the mechanical checks at exactly that
+   commit, and create `stable` there.
+5. **Adopt the result in the offer-exchange checkout and retire the plugins.**
+   Close host sessions. Uninstall both hosts' Isabelle extensions, remove the
+   Claude Code directory marketplace and the Codex
+   `isabelle-formal-modeling-dev` marketplace, and move
+   `~/.codex/agents/ic2_prover.toml` aside, all before the first verification
+   session, so no duplicate is present while the project copies are tested.
+   Check out `stable` in the clone `ISABELLE_TOOLING_ROOT` names, moving
+   development on `main` to a linked worktree, and run `isabelle-tooling
+   update stable` in the offer-exchange checkout, which is the adoption path,
+   since it has a descriptor but no inventory. Then, if this project uses
+   coordination, run `agent-board init` and `install-hook`. Keep
+   `enabledMcpjsonServers` for the root `.mcp.json`. Start fresh sessions and
+   verify doctor, I/Q, the project proof worker and, with the board, digest
+   delivery and the claim and ref guards from a linked worktree; then commit
+   the descriptors, inventories and project files and delete the moved-aside
+   profile. If this fails, restore the project files with Git and reinstall
+   the 0.7.1 extensions from the tooling history before resuming work.
 6. **Remove the plugin and release machinery.** Delete what "Tooling source
    changes" lists, rerun the fixtures at the resulting commits, advance
    `stable`, and run `update stable` in the offer-exchange checkout. Gate:
@@ -722,3 +771,19 @@ corrections to the argument as first stated were the circular bootstrap,
 the requirement that `check` compare against the Git object rather than the
 working tree, and that marketplaces solve distribution rather than file
 volume. Its other conditions are folded into this plan.
+
+**The contracts review, 2026-09-28** (Codex `gpt-5.6-sol`, high effort,
+over this plan and the first draft of the contracts). It made 11 findings,
+and all of them are now folded in: an adoption path for existing
+descriptors; an `init` whose session scaffold comes from the pinned object
+and is published descriptor last; an installer lock and same-filesystem
+publication; paired, byte-exact Git guards; a bounded ic2 notifier;
+cutting layout A's symlink delivery; stable doctor check ids; read-only
+doctors; an incomplete-state rule for board storage; a negative I/Q check
+for the proof worker; and a doctor split between steps 2 and 3, with an
+exact `stable` validation record. Two findings were narrowed. Isabelle
+doctor gets no JSON output, since nothing consumes it. The adapter does not
+check the board's state format, since it never reads board storage. The
+hooks-directory finding was partly mistaken: `git rev-parse --git-path
+hooks` already follows `core.hooksPath`. It became the rule that guards are
+installed only inside the Git directory.

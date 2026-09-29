@@ -482,6 +482,7 @@ class ToolingTests(unittest.TestCase):
         stub = self.work / 'agent-board-stub'
         stub.write_text(textwrap.dedent(f'''\
             #!/usr/bin/env bash
+            printf '%s\n' "$*" >>"{self.work}/board-calls"
             case "$1" in
               version) printf '%s\\n' {json.dumps(json.dumps(version))} ;;
               doctor) printf '%s\\n' {json.dumps(doctor_output)}; exit {doctor_code} ;;
@@ -498,6 +499,11 @@ class ToolingTests(unittest.TestCase):
             dict(id='files', status='ok', message='match'), dict(id='guard.pre-commit', status='fail',
                                                                  message='no guard\nat all')]))
         out = self.doctor(env=self.board_stub(good, report, 1))
+        self.assertEqual((self.work / 'board-calls').read_text(),
+                         f'version --json\ndoctor --json --project-root {self.project}\n')
+        self.doctor('--allow-dirty', env=self.board_stub(good, report, 1))
+        self.assertTrue((self.work / 'board-calls').read_text().endswith(
+            f'doctor --json --project-root {self.project} --allow-dirty\n'))
         self.assertIn('[OK]   board: files: match', out)
         self.assertIn('[FAIL] board: guard.pre-commit: no guard at all', out)
         out = self.doctor(env=self.board_stub(dict(good, interface=2), report))

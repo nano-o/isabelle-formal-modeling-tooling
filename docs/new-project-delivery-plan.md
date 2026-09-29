@@ -690,7 +690,7 @@ session state; a passing file-copy check is not enough.
 
 ## Order of work
 
-Steps 1 and 2 were done on 2026-09-28 (see History); the others are
+Steps 1 to 3 were done on 2026-09-28 (see History); the others are
 pending.
 
 1. **Settle the contracts.** Record the ownership, project files, owned
@@ -812,3 +812,41 @@ docs, profiles and proving skill updated; the runtime clone stays on
   blocks, standing in for `post` waiting on a held lock, so the Isabelle
   tests need no agent-board checkout; the board repository tests its own
   Claude hook with the lock really held.
+
+**Step 3, 2026-09-28.** agent-board `ddb36e7` adds the project
+operations, doctor, bounded digests and the smaller skill (489 words, about
+700 tokens, with four references), and `c6b934c` accepts
+`--project-root` after the project verbs, a bug that only running both
+candidates together showed. This repository's `delivery` branch has
+`b1070e9`: `bin/isabelle-tooling`, the manifest and templates in
+`extension/project/`, the renderer, the revised doctor with the board
+adapter, and the setup skill, worker profiles, proving skill and README.
+The installer rules are one module, kept as identical copies in both
+repositories. Both `make validate` runs pass: agent-board's 41 regressions
+(5 new, for bounded digests) and 22 project-file and doctor tests, and this
+repository's 17 project-file, command-interface and doctor tests beside
+the existing suites. A mutation check confirmed that the tests catch a
+skipped preflight, the descriptor written before the inventory, a doctor
+that lets Git refresh an index, a digest that marks past what it printed,
+unverified owned blocks and an unchecked guard. By hand, on new
+repositories with both real candidates: each installation order, the two
+installers started at once under the held lock (they serialize and the
+second refuses on the first's unstaged files), both doctors, and `remove`
+of either component keeping the other.
+
+What differs from the text above, besides the decisions the contracts now
+list:
+
+- A new digest cursor, and `--full`, start at the latest posts rather than
+  replaying the whole history, which is available through `show --all`.
+- No `stable` branch exists yet, so `init` without `--revision` fails in
+  both repositories until step 4.
+- The other four skills keep their `Skill revision marker` lines, which
+  step 6 removes with the release machinery; the rewritten setup skill has
+  none.
+- The candidate worktree is not a working runtime: its AutoCorrode is not
+  populated and the one registered ic2 component is the runtime clone's,
+  so Isabelle doctor run from it fails those checks. Step 4 needs a
+  runtime checkout at the candidate, which means either moving that
+  registration for the fixtures or giving them their own Isabelle user
+  home.

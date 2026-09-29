@@ -11,8 +11,12 @@ them; each repository keeps its own copy of the shared rules, and a change
 to them is made in both.
 
 Step 2 moved the agent-board part to that repository, which owns it now;
-only a pointer remains below. Of the rest, step 2 implemented the ic2
-notifier in "Board adapter"; nothing else is implemented yet.
+only a pointer remains below. Step 2 implemented the ic2 notifier in "Board
+adapter", and step 3 the rest: the shared rules in `scripts/project_files.py`
+(an identical copy of agent-board's `src/project_files.py`), the Isabelle
+project files, `bin/isabelle-tooling`, the doctor additions and the board
+adapter. Where the implementation settles a detail left open,
+"Decisions made in implementation" at the end records it.
 
 ## Shared rules
 
@@ -427,3 +431,51 @@ before `bye`. The ic2 notes are permitted in either mode.
 A coordinator committing in a supervised worker's worktree names itself:
 `AGENT_BOARD_AGENT=HANDLE git -C WORKTREE commit …`. The coordinator never
 releases a claim while its worker may still write.
+
+## Decisions made in implementation
+
+Recorded on 2026-09-28 with step 3. The first list is the same in both
+repositories' copies of the shared rules.
+
+- `sync --check` exits 1 in link mode, since the files are not the pinned
+  ones; `sync --check --allow-dirty` makes link mode a note, which is what
+  both doctors use under `--allow-dirty`. It also fails when the runtime
+  checkout is not at the pin, as "the running scripts come from that
+  revision" requires; board doctor reports that as `executable.revision`
+  and folds only the file findings into `files`.
+- The inventory records a `marker` with each array-element entry, so an
+  entry that a later manifest drops can still be found and removed.
+- Installed files get Git's checkout modes, 0777 or 0666 less the umask, so
+  a `git restore` after a failure gives the same modes.
+- Restore commands are printed as `rm -f`, then `rmdir`, then `git
+  restore`, run from the checkout root, so that `git restore` never writes
+  through a symlink an install created. A link-mode symlink removed by a
+  failed install is not recreated by them; the message says to rerun
+  `sync --link`.
+- `update` refuses in link mode; `sync` first restores the copies.
+- `remove` without an inventory refuses, and `remove` also refuses when
+  the inventory directory holds files it did not install.
+- An emptied JSON file is deleted, and so is a TOML file left empty by
+  removing its block; directories left empty by deletions are removed,
+  never the checkout root.
+- There is no gitignored local state yet, so neither inventory directory
+  has its own `.gitignore`.
+
+For the Isabelle tooling only:
+
+- The synchronizer the plan calls `scripts/sync-extension.sh` is
+  `scripts/isabelle_tooling.py` with the shared `project_files.py`;
+  `bin/isabelle-tooling` sends `doctor` to `doctor.sh` and the rest there.
+- `new-project.sh` takes `--revision COMMIT --stage DIR` and renders into an
+  empty directory; it no longer writes into a checkout itself. The
+  session README no longer embeds the revision, which `update` would make
+  stale; it points at `tooling_revision`.
+- `skills list` prints its revision on its first stdout line; `skills
+  show` keeps stdout to the file's bytes. Inside a project means below the
+  nearest `isabelle-tooling.conf`, as `ic2.sh` resolves it.
+- Doctor also fails when `ISABELLE_TOOLING_ROOT` is unset or names another
+  checkout, and on a local-scope `iq` server that `~/.claude.json` records
+  for the project. The extension `REVISION` comparison is gone already,
+  since an installed plugin now fails doctor.
+- The proof-worker instructions, rendered into both profiles, carry the
+  two-mode section; the proving skill says how to brief each mode.

@@ -1,6 +1,8 @@
-You prove Isabelle lemmas inside one dedicated ic2 Git worktree. Every I/Q tool
-is withheld from you by this profile, deliberately: a proof worker must never
-attach to the human's live jEdit in the main worktree.
+You prove Isabelle lemmas inside one dedicated ic2 Git worktree. Never call an
+I/Q tool (`iq`, `mcp__iq__*`), even when the host lists them: a proof worker must
+never attach to the human's live jEdit in the main worktree. This profile
+withholds them where the host honours that; Codex CLI still lists the main
+session's I/Q tools to spawned agents.
 
 ## Assigned worktree
 

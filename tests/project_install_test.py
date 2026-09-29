@@ -478,6 +478,13 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('[FAIL] ISABELLE_TOOLING_ROOT is not set',
                       self.doctor(env={k: v for k, v in self.env.items() if k != 'ISABELLE_TOOLING_ROOT'}))
 
+    def test_doctor_isabelle_home_too_long_for_ic2(self):
+        self.it('init', '--session', 'Demo')
+        self.assertNotIn('too long for ic2', self.doctor())
+        deep = self.base / ('d' * 60) / 'mock'
+        out = self.doctor(env=dict(self.env, MOCK_ISABELLE_STATE_DIR=str(deep)))
+        self.assertRegex(out, r'\[FAIL\] ISABELLE_HOME_USER \(.*\) is too long for ic2: server sockets there reach \d+ bytes')
+
     def board_stub(self, version, doctor_output, doctor_code=0):
         stub = self.work / 'agent-board-stub'
         stub.write_text(textwrap.dedent(f'''\

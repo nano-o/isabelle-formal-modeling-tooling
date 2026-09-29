@@ -244,6 +244,13 @@ if [[ -n "$isabelle_home_user" ]]; then
   else
     ok "One ic2 component registered from the tooling clone, JAR built"
   fi
+  # ic2 servers listen on $ISABELLE_HOME_USER/ic2/<name>.sock, and ic2 refuses
+  # a socket path over 100 bytes; derived names are at most IC2_NAME_MAX long,
+  # and "/ic2/" and ".sock" add 5 bytes each.
+  socket_len=$(( ${#isabelle_home_user} + 5 + IC2_NAME_MAX + 5 ))
+  if (( socket_len > 100 )); then
+    problem "ISABELLE_HOME_USER ($isabelle_home_user) is too long for ic2: server sockets there reach $socket_len bytes, over ic2's limit of 100. Use a shorter home directory for Isabelle (USER_HOME)."
+  fi
   if [[ -x "$(command -v systemd-run 2>/dev/null)" ]] && memory_bound_available; then
     ok "systemd user scopes are available for the prover memory bound"
   else

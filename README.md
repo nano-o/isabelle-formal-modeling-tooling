@@ -75,6 +75,15 @@ own convention:
 mkdir -p ~/.config/isabelle-iq && (umask 077; openssl rand -hex 32 > ~/.config/isabelle-iq/auth-token)
 ```
 
+I/Q takes its token from `IQ_AUTH_TOKEN`, which `scripts/launch_jedit.sh`
+sets from that file (see "The jEdit workflow"); without it, I/Q makes up a
+random token and every `authenticate` call fails. The agent reads the token to authenticate. Codex
+CLI needs no setup for that. Claude Code asks each time unless
+`permissions.allow` in `~/.claude/settings.json` lists
+`Bash(cat ~/.config/isabelle-iq/auth-token)` and
+`Read(~/.config/isabelle-iq/auth-token)`, and its auto mode can refuse the
+read even then.
+
 ## Quick start: a new project
 
 With the tooling clone set up (above), `ISABELLE_TOOLING_ROOT` naming it in

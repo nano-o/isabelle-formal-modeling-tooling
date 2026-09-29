@@ -81,13 +81,33 @@ says so.
   `.codex/config.toml` only in a trusted project; Claude Code asks to approve
   the `iq` server from `.mcp.json` at the first start (or the user lists it
   in `enabledMcpjsonServers` in `.claude/settings.local.json`).
+- **Let the main session read the I/Q token.** The agent passes the token to
+  I/Q's `authenticate` call. Codex CLI reads it inside its sandbox with no
+  setup. Claude Code asks each time, unless `permissions.allow` in
+  `~/.claude/settings.json` lists `Bash(cat ~/.config/isabelle-iq/auth-token)`
+  and `Read(~/.config/isabelle-iq/auth-token)`. Its auto mode can refuse the
+  read even with those rules; then use I/Q from another permission mode. Undo: remove
+  the two rules.
+
+## 5. Starting jEdit
+
+For the jEdit workflow, start jEdit through the tooling, never with a plain
+`isabelle jedit`:
+
+```bash
+"$ISABELLE_TOOLING_ROOT/scripts/launch_jedit.sh" --project <formal root> --session <Name> --venv "$ISABELLE_TOOLING_ROOT/.venv" <Name>/<Name>.thy
+```
+
+The launcher passes I/Q the token from `~/.config/isabelle-iq/auth-token` in
+`IQ_AUTH_TOKEN` and limits it to the formal root. Without that variable, I/Q
+generates a random token, and every `authenticate` call fails.
 
 Doctor fails while an Isabelle formal-modeling plugin or its marketplace is
 installed in either host, or a user-level `iq` server or `ic2-prover`
 profile exists: each would duplicate a project file. It prints the command
 that removes each one; show it to the user.
 
-## 5. The project files
+## 6. The project files
 
 If the checkout has no `isabelle-tooling.conf` yet, the user runs, before a
 host session starts there (ask for the session name, an Isabelle identifier,
@@ -129,7 +149,7 @@ reinstall. That is development state: nothing in it may be committed, doctor
 fails on it without `--allow-dirty`, and `isabelle-tooling sync` restores the
 copies.
 
-## 6. Doctor, then build
+## 7. Doctor, then build
 
 ```bash
 "$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" doctor

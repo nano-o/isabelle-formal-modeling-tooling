@@ -164,6 +164,18 @@ twin="$TEST_TMP_DIR/twin/project one"
 write_descriptor "$twin"
 [[ "$(derive_server_name "$twin")" != "$(derive_server_name "$spaced")" ]] ||
   fail "server name: same-basename checkouts must differ"
+# A long basename is cut, so the socket path stays within ic2's limit, and a
+# separator left at the cut is dropped.
+long="$TEST_TMP_DIR/formal-offer-exchange-demo-proof"
+long_hash="$(printf '%s' "$long" | openssl dgst -sha256 | awk '{print substr($NF, 1, 8)}')"
+[[ "$(derive_server_name "$long")" == "ic2-formal-offer-exchange-de-$long_hash" ]] ||
+  fail "server name: long basename: $(derive_server_name "$long")"
+cut="$TEST_TMP_DIR/aaaaaaaaaaaaaaaaaaaaaaa-bbbb"
+cut_hash="$(printf '%s' "$cut" | openssl dgst -sha256 | awk '{print substr($NF, 1, 8)}')"
+[[ "$(derive_server_name "$cut")" == "ic2-aaaaaaaaaaaaaaaaaaaaaaa-$cut_hash" ]] ||
+  fail "server name: separator at the cut: $(derive_server_name "$cut")"
+long_name="$(derive_server_name "$long")"
+(( ${#long_name} <= IC2_NAME_MAX )) || fail "server name: longer than IC2_NAME_MAX: $long_name"
 
 # --- project wrapper ----------------------------------------------------------------
 

@@ -231,11 +231,19 @@ parse_project_root_option() {
 }
 
 # derive_server_name CHECKOUT_ROOT: the per-checkout ic2 server name, ic2-<sanitized basename>-<first 8 hex of sha256 of the
-# canonical path>, so that every worktree gets its own prover.
+# canonical path>, so that every worktree gets its own prover. The basename part is cut to IC2_NAME_STEM_MAX characters:
+# the server's socket is $ISABELLE_HOME_USER/ic2/<name>.sock, and ic2 refuses socket paths over 100 bytes.
+IC2_NAME_STEM_MAX=24
+# Read by doctor.sh, which sources this library; ShellCheck cannot see it.
+# shellcheck disable=SC2034
+IC2_NAME_MAX=$((4 + IC2_NAME_STEM_MAX + 1 + 8))
 derive_server_name() {
   local checkout_root="$1"
   local name hash
   name="$(sanitize_name "$(basename "$checkout_root")")"
+  name="${name:0:IC2_NAME_STEM_MAX}"
+  name="$(printf '%s' "$name" | sed -E 's/[-.]+$//')"
+  [[ -n "$name" ]] || name="project"
   hash="$(printf '%s' "$checkout_root" | openssl dgst -sha256 | awk '{print substr($NF, 1, 8)}')"
   printf 'ic2-%s-%s\n' "$name" "$hash"
 }

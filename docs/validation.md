@@ -100,3 +100,45 @@ Observations
   not know the coordinator's handle and refused its own claim; setting
   `AGENT_BOARD_AGENT` works (agent-board, not this repository).
 : Codex CLI still lists the main session's I/Q tools to `ic2_prover` (F4).
+
+## 2026-09-29: install-iq-plugin.sh points to the launcher
+
+Candidates
+: isabelle-formal-modeling-tooling `3432dbd`, this commit's parent. The
+  fixtures ran at `245550f`, which differs from it only in the plan's
+  History. AutoCorrode `dbd474f`, as before.
+: agent-board `cf0fdd2`, the validation record of `7dae935`, whose ref
+  guard passes the unchanged branch update of `git worktree add -b`.
+
+Hosts
+: Claude Code 2.1.285 with claude-opus-5-5, in auto permission mode.
+: Codex CLI 0.159.2 with gpt-6-astra at medium reasoning effort, in the
+  workspace-write sandbox with automatic review.
+: Isabelle2025-2, Git 2.43, Python 3.12.3, on Linux.
+
+Setup
+: As in the previous record, with the board checkout under test named by
+  `AGENT_BOARD_ROOT`; the stellar-core clone pinned at both candidates.
+
+Passed
+: `make validate`, including a test of `install-iq-plugin.sh` against a
+  stand-in AutoCorrode checkout: the numbered steps that start a plain
+  `isabelle jedit` are dropped, the launcher is named, and a failed build
+  fails the script without a stamp.
+: The installer against the real AutoCorrode Makefile, into the fixtures'
+  Isabelle user home.
+: Installers, doctors and the command interface: 76 checks on the bare
+  repository and 75 on the stellar-core clone, all but the check of
+  `init` at the previous `stable`, whose doctors fail while the runtimes
+  are at the candidates.
+: On both hosts: the worker smoke proof through ic2 and the board, with
+  no guard refusal.
+
+Not rerun
+: The behavioural scenarios and link mode: no skill, instruction block,
+  worker profile or link code changed.
+
+Observations
+: Neither smoke coordinator claimed the branch and then created its
+  worktree unaided, the path refused in step 6; the board's regression
+  test covers it.

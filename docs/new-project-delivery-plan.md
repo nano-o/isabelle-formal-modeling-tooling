@@ -690,8 +690,8 @@ session state; a passing file-copy check is not enough.
 
 ## Order of work
 
-Steps 1 to 3 were done on 2026-09-28 and step 4 on 2026-09-29 (see
-History); the others are pending.
+Steps 1 to 3 were done on 2026-09-28 and steps 4 and 5 on 2026-09-29
+(see History); step 6 is pending.
 
 1. **Settle the contracts.** Record the ownership, project files, owned
    entry and block formats, root instruction handling, executable
@@ -906,3 +906,52 @@ Not established: the plan's three runs per scenario. Observations: Codex encrypt
 worker briefs could only be judged by behaviour, and it may give a worker
 the parent's whole conversation; its scope-expansion coordinator took the
 extra files itself, so no expansion request arose.
+
+**Step 5, 2026-09-29: adoption in the offer-exchange checkout.** Retired:
+the Claude Code plugin and its directory marketplace; the Codex plugin, its
+personal marketplace `isabelle-formal-modeling-dev`
+(`~/.agents/plugins/marketplace.json`) and the Git marketplace on
+`release`; and `~/.codex/agents/ic2_prover.toml`, moved aside until the
+checks passed and then deleted. The two allow rules for reading the I/Q
+token left Claude Code's user settings. The runtime clone has `stable`
+checked out (`19f79ff`, AutoCorrode `dbd474f`), with ic2 rebuilt and the
+I/Q plugin reinstalled; `main` moved to the `-delivery` worktree and the
+merged `delivery` branch was deleted. The agent-board checkout also has
+`stable` (`bf1b1ff`), with `main` in `~/Documents/agent-board-main`.
+`ISABELLE_TOOLING_ROOT` is exported in the user's bashrc, and
+`agent-board` is linked from `~/.local/bin`.
+
+In the checkout, `update stable` adopted the project files, and
+`agent-board init` and `install-hook` added the board; the user's
+uncommitted theory work stayed out. Both `sync --check` runs, Isabelle
+doctor (23 checks, the host configuration included) and board doctor
+passed, and from a linked worktree both guards refused a commit and a
+branch claimed by another agent and allowed them after release. The
+project files were committed (`9b5ba74cc6`) before the worker smoke proof
+rather than after every check: while they were only staged, the Claude
+Code coordinator asked which committed state to base the worker's worktree
+on, as the proving skill says. In fresh sessions the user ran: Claude Code
+from the root and from `formal/` saw one `iq` server, one `ic2-prover` and
+one copy of each skill, received the digest from the hook at session
+start, called I/Q without the token, and delegated the smoke proof to an
+independent worker that saw no I/Q tools; Codex CLI from the root ran the
+digest itself,
+called I/Q, and delegated the smoke proof to a supervised `ic2_prover` in a
+worktree under `/tmp`, inside its sandbox.
+
+Observations:
+
+- Context: a Claude Code session in this checkout starts at about 41k
+  tokens, about 2.5k of them from the project. Delegating the one-line
+  smoke proof took about 30k more, mostly for reading whole files: all of
+  `isabelle-proving` for its delegation section, the board's
+  `delegation.md`, and the worker profile. The Codex session ended at 22%
+  of its window, about 65k tokens, including a request to list every tool.
+  Splitting the proving skill, so that delegating does not load the proof
+  pitfalls, is a candidate for step 6 or later.
+- `scripts/install-iq-plugin.sh` ends with AutoCorrode's advice to start
+  jEdit with a plain `isabelle jedit`, which gives the random token of F2.
+- The Claude hook's digest reaches the agent, not the screen: the user
+  asked the session how to see the board, and it answered with `digest`.
+- Codex's sandbox refused the first board write (`.git` is read-only
+  there) until automatic review allowed it, as in step 4.

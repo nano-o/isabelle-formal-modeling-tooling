@@ -1024,3 +1024,11 @@ created the worktree before the branch was claimed, and Codex's set
 `AGENT_BOARD_AGENT` on `git worktree add`. The behavioural scenarios and
 link mode were not rerun; no skill, instruction block, worker profile or
 link code changed. Splitting `isabelle-proving` remains deferred.
+
+The validation records followed, agent-board `cf0fdd2` and then this
+repository's `251aad3`, with the mechanical checks rerun at both (as
+above, then 77 on the bare repository and 76 on the demo once `stable` had
+moved). Both runtimes fast-forwarded to them; AutoCorrode did not change,
+so neither ic2 nor the plugin was rebuilt. The offer-exchange checkout ran
+`update stable` for both components (`73c24bb380`), with both doctors
+passing, and the demo followed (`ff54a9c294`).

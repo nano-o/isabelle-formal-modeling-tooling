@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Keep the intentionally different Claude and Codex MCP declarations intact."""
+"""Keep the project manifest and the two hosts' intentionally different iq declarations intact."""
 
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import tempfile
+import tomllib
 from pathlib import Path
 
 
@@ -17,41 +21,8 @@ def load(relative_path: str) -> dict[str, object]:
     return payload
 
 
-codex_manifest = load("extension/.codex-plugin/plugin.json")
-claude_manifest = load("extension/.claude-plugin/plugin.json")
-codex_mcp = load("extension/codex/.mcp.json")
-claude_mcp = load("extension/.mcp.json")
-
-assert codex_manifest.get("mcpServers") == "./codex/.mcp.json"
-assert claude_manifest.get("mcpServers") == "./.mcp.json"
-
-assert "iq" in codex_mcp
-assert "mcpServers" not in codex_mcp
-assert "mcp_servers" not in codex_mcp
-codex_iq = codex_mcp["iq"]
-assert isinstance(codex_iq, dict)
-assert "ISABELLE_TOOLING_ROOT" in codex_iq.get("env_vars", [])
-assert "ISABELLE_TOOLING_ROOT" in " ".join(codex_iq.get("args", []))
-
-assert set(claude_mcp) == {"mcpServers"}
-claude_servers = claude_mcp["mcpServers"]
-assert isinstance(claude_servers, dict)
-assert "iq" in claude_servers
-claude_iq = claude_servers["iq"]
-assert isinstance(claude_iq, dict)
-assert "CLAUDE_PLUGIN_ROOT" in str(claude_iq.get("command"))
-
-# The coordination board moved to agent-board, which installs its own
-# digest hook into a project; neither extension declares hooks.
-assert "hooks" not in claude_manifest
-assert "hooks" not in codex_manifest
-assert not (REPO_ROOT / "extension/hooks").exists()
-
-# The project delivery declares the same two shapes: a member of .mcp.json for
-# Claude Code and a managed [mcp_servers.iq] block for Codex CLI, both naming
-# the tooling only through ISABELLE_TOOLING_ROOT.
-import tomllib
-
+# The project manifest installs every shipped skill and names only files
+# that exist at this revision.
 project = load("extension/project/manifest.json")
 assert project["component"] == "isabelle-tooling" and project["format"] == 1
 installed = sorted(s["name"] for s in project["skills"])
@@ -63,19 +34,34 @@ for item in project["files"] + project["json_entries"] + project["toml_blocks"]:
     assert (REPO_ROOT / item["source"]).is_file(), item
 assert (REPO_ROOT / project["markdown_block"]).is_file()
 
-project_claude = load("extension/project/mcp-iq.json")
-assert project_claude["command"] == "${ISABELLE_TOOLING_ROOT}/extension/bin/iq-bridge.sh"
-assert project_claude["env"] == claude_iq["env"]
+# Claude Code: a member of the project's .mcp.json. It expands ${VAR} in
+# `command`, so the entry names the bridge through ISABELLE_TOOLING_ROOT.
+claude_iq = load("extension/project/mcp-iq.json")
+assert claude_iq == {"command": "${ISABELLE_TOOLING_ROOT}/extension/bin/iq-bridge.sh",
+                     "args": [], "env": {"IQ_MCP_BRIDGE_PORT": "8765"}}, claude_iq
+
+# Codex CLI: a managed [mcp_servers.iq] block. It expands no variable in a
+# stdio `command` and passes only the variables `env_vars` names, so a shell
+# expands ISABELLE_TOOLING_ROOT and the bridge's token variables are forwarded.
 codex_block = (REPO_ROOT / "extension/project/codex-config.toml").read_text(encoding="utf-8")
 assert codex_block.splitlines()[0].startswith("# Managed by isabelle-tooling")
-assert tomllib.loads(codex_block) == {"mcp_servers": {"iq": codex_iq}}
+codex_config = tomllib.loads(codex_block)
+assert list(codex_config) == ["mcp_servers"] and list(codex_config["mcp_servers"]) == ["iq"]
+codex_iq = codex_config["mcp_servers"]["iq"]
+assert codex_iq["command"] == "bash"
+assert codex_iq["args"] == ["-c", 'exec "$ISABELLE_TOOLING_ROOT/extension/bin/iq-bridge.sh"'], codex_iq["args"]
+assert codex_iq["env_vars"] == ["ISABELLE_TOOLING_ROOT", "IQ_TOKEN_FILE", "XDG_CONFIG_HOME"], codex_iq["env_vars"]
+assert codex_iq["env"] == claude_iq["env"]
+assert set(codex_iq) == {"command", "args", "env_vars", "env"}, set(codex_iq)
+
+# The plugin route ended with extension v0.7.1 (step 6 of the delivery plan);
+# the board, which installs its own digest hook, is not part of the tooling.
+for gone in (".claude-plugin", ".agents/plugins", "extension/.claude-plugin", "extension/.codex-plugin",
+             "extension/.mcp.json", "extension/codex", "extension/hooks", "scripts/release.sh"):
+    assert not (REPO_ROOT / gone).exists(), gone
 
 # The bridge wrapper hands the bridge the token file launch_jedit.sh uses, so
 # the project's iq server authenticates without the agent reading the token.
-import os
-import subprocess
-import tempfile
-
 with tempfile.TemporaryDirectory() as tmp:
     fake_bridge = Path(tmp) / "AutoCorrode/iq/iq_bridge.py"
     fake_bridge.parent.mkdir(parents=True)
@@ -92,7 +78,4 @@ with tempfile.TemporaryDirectory() as tmp:
     assert token_file(IQ_TOKEN_FILE="/elsewhere/token") == "/elsewhere/token"
 launcher = (REPO_ROOT / "scripts/launch_jedit.sh").read_text(encoding="utf-8")
 assert 'IQ_TOKEN_FILE="${IQ_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/isabelle-iq/auth-token}"' in launcher
-for name in ("IQ_TOKEN_FILE", "XDG_CONFIG_HOME"):
-    assert name in codex_iq.get("env_vars", []), name
-
 print("extension manifest host-parity checks passed")

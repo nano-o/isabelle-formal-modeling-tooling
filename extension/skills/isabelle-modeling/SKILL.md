@@ -234,5 +234,3 @@ function is folded into another; no simplification lives in a definition.
 Then the reviewer checks the exports: every exported constant is a transport
 wrapper over a code-level definition, and the export check passes. Report
 per function, naming the deviation, not per file.
-
-Skill revision marker: v0.7.1 — helper Boolean stays Boolean; scast for signed widening; reachability by reading.

@@ -173,7 +173,7 @@ class ToolingTests(unittest.TestCase):
         self.assertEqual((self.project / '.claude/agents/ic2-prover.md').read_bytes(),
                          self.blob(self.rev1, 'extension/agents/ic2-prover.md'))
         self.assertEqual((self.project / '.codex/agents/ic2_prover.toml').read_bytes(),
-                         self.blob(self.rev1, 'extension/codex/ic2_prover.toml'))
+                         self.blob(self.rev1, 'extension/agents/ic2_prover.toml'))
         self.assertEqual(json.loads(self.read('.mcp.json')), {'mcpServers': {'iq': {
             'command': '${ISABELLE_TOOLING_ROOT}/extension/bin/iq-bridge.sh', 'args': [],
             'env': {'IQ_MCP_BRIDGE_PORT': '8765'}}}})

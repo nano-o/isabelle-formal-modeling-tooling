@@ -10,7 +10,7 @@
   ],
   "files": [
     {"path": ".claude/agents/ic2-prover.md", "source": "extension/agents/ic2-prover.md", "executable": false},
-    {"path": ".codex/agents/ic2_prover.toml", "source": "extension/codex/ic2_prover.toml", "executable": false}
+    {"path": ".codex/agents/ic2_prover.toml", "source": "extension/agents/ic2_prover.toml", "executable": false}
   ],
   "json_entries": [
     {"file": ".mcp.json", "pointer": "/mcpServers/iq", "source": "extension/project/mcp-iq.json"}

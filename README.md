@@ -26,8 +26,7 @@ bin/isabelle-tooling   command interface: skills list/show, init/sync/update/rem
 scripts/isabelle_tooling.py  its implementation; project_files.py holds the rules shared with agent-board
 scripts/new-project.sh the session renderer behind `init`, reading templates/ from the pinned commit
 scripts/render-agents.sh  render the two host worker profiles from agents/
-scripts/release.sh     cut a release of the extension (release branch, tag, REVISION)
-extension/             skills, MCP declarations, worker profiles; project/ is what init installs
+extension/             skills, worker profiles, the iq bridge launcher; project/ is what init installs
 scripts/doctor.sh      check the whole setup, print remediations, run nothing
 scripts/setup-ir-venv.sh      create the I/R Python environment (.venv/)
 scripts/install-iq-plugin.sh  build/install/stamp the I/Q jEdit plugin
@@ -145,137 +144,34 @@ A project whose descriptor predates project files adopts them with
 already there. The contracts behind all of this are in
 [docs/delivery-contracts.md](docs/delivery-contracts.md).
 
-## The agent-host extension
+## The extension directory
 
-**Superseded by project files** (the quick start above); this route is kept
-until the plugin and release machinery are removed, step 6 of the
-[delivery plan](docs/new-project-delivery-plan.md). Doctor now fails while
-either host has the plugin or its marketplace installed, since it would
-duplicate the project's files.
-
-The `extension/` directory is one package for both hosts: the shared
-`skills/` tree (`isabelle-setup` for binding a project, `isabelle-proving`
-for the two theory-editing workflows and the proof discipline,
-`isabelle-modeling` for the code-level model standard and its conventions
-interview, `isabelle-differential` for testing an exported model against its
+`extension/` holds what projects receive: the `skills/` tree
+(`isabelle-setup` for binding a project, `isabelle-proving` for the two
+theory-editing workflows and the proof discipline, `isabelle-modeling` for
+the code-level model standard and its conventions interview,
+`isabelle-differential` for testing an exported model against its
 implementation, `isabelle-assurance` for stating what the work
-establishes), the I/Q MCP declarations (Claude Code reads `.mcp.json`, while
-Codex CLI reads the direct server map in `codex/.mcp.json`; both launch
-`bin/iq-bridge.sh`, the one place the extension resolves
-`ISABELLE_TOOLING_ROOT`), the Claude Code agent
-`agents/ic2-prover.md`, and the Codex custom-agent profile
-`codex/ic2_prover.toml`. Both agent profiles are rendered from
-`agents/ic2-prover.instructions.md` by `scripts/render-agents.sh`; `make
-validate` fails when either is stale. Set `ISABELLE_TOOLING_ROOT` to the
-tooling clone in the environment the host starts from.
+establishes); the worker profiles `agents/ic2-prover.md` (Claude Code) and
+`agents/ic2_prover.toml` (Codex CLI), both rendered from
+`agents/ic2-prover.instructions.md` by `scripts/render-agents.sh` (`make
+validate` fails when either is stale); `bin/iq-bridge.sh`, the `iq` server's
+launcher; and `project/`, the manifest and the templates of the managed
+entries and blocks.
 
-The MCP files cannot currently be shared. Claude Code requires the root
-`mcpServers` wrapper and expands `CLAUDE_PLUGIN_ROOT`. Codex CLI 0.152.1
-requires the manifest's `mcpServers` path to name a direct server map and does
-not expand `PLUGIN_ROOT` or `CLAUDE_PLUGIN_ROOT` in a stdio `command`. Its
-declaration therefore forwards `ISABELLE_TOOLING_ROOT` with `env_vars` and
-uses a shell to expand that variable before executing the launcher from
-the tooling clone. No installed path or version is embedded in the package.
+The two `iq` declarations differ on purpose. Claude Code expands
+`${ISABELLE_TOOLING_ROOT}` in a `.mcp.json` `command`; Codex CLI expands no
+variable in a stdio `command` and passes a server only the variables its
+`env_vars` names, so its block runs the launcher through `bash -c` and
+forwards `ISABELLE_TOOLING_ROOT` and the token variables.
+`tests/extension_manifest_test.py` holds both shapes in place.
 
-Hosts install the extension from a Git URL of this repository, from the
-moving `release` branch or from an immutable `vX.Y.Z` tag. Both are release
-commits (below), never `main`; a release commit carries `extension/REVISION`
-with the release tag, the source commit it was built from, and the SHA-256 of
-the Codex worker profile, and doctor compares that file with the tooling
-clone and the project descriptor.
-
-Claude Code
-: `claude plugin marketplace add <git-url>#release`, then
-  `claude plugin install isabelle-formal-modeling@isabelle-formal-modeling-tooling`.
-  Upgrade along the channel with `claude plugin marketplace update
-  isabelle-formal-modeling-tooling` followed by `claude plugin update
-  isabelle-formal-modeling@isabelle-formal-modeling-tooling`; the first
-  refreshes the catalog, the second installs the new version (a superseded
-  version stays in `~/.claude/plugins/cache/` for a while; doctor reads the
-  active one from `installed_plugins.json`). Remove with `claude plugin
-  uninstall ...` and `claude plugin marketplace remove
-  isabelle-formal-modeling-tooling`. The worker agent is part of the plugin.
-
-Codex CLI
-: `codex plugin marketplace add <git-url> --ref release`, then
-  `codex plugin add isabelle-formal-modeling@isabelle-formal-modeling-tooling`.
-  Upgrade with `codex plugin marketplace upgrade
-  isabelle-formal-modeling-tooling`; with codex-cli 0.152 this replaced the
-  installed plugin in `~/.codex/plugins/cache/` with the channel's new
-  version on its own, and a following `codex plugin add ...` is a harmless
-  confirmation. Codex plugins cannot bundle custom agents, so install the
-  worker profile yourself and re-run this after every upgrade (doctor
-  compares its hash with the extension's):
-  `install -m 0644 ~/.codex/plugins/cache/isabelle-formal-modeling-tooling/isabelle-formal-modeling/<version>/codex/ic2_prover.toml ~/.codex/agents/ic2_prover.toml`.
-  Remove with `codex plugin remove ...`, `codex plugin marketplace remove
-  isabelle-formal-modeling-tooling`, and by deleting the profile.
-
-Local Codex development
-: The Git marketplace above is a release snapshot and cannot expose
-  uncommitted skill edits. For iteration, use a separate direct-local
-  marketplace. On a checkout below the home directory, the personal
-  marketplace at `~/.agents/plugins/marketplace.json` can be named
-  `isabelle-formal-modeling-dev` and point its plugin entry at this
-  checkout's `extension/` using a `./`-relative path from the home
-  directory. Keep the production marketplace configured, but install only
-  one copy of `isabelle-formal-modeling` at a time.
-
-  Before installing the development copy, remove the production installation
-  explicitly:
-
-  ```bash
-  codex plugin remove isabelle-formal-modeling@isabelle-formal-modeling-tooling
-  ```
-
-  Then use the built-in `plugin-creator` updater, which refuses Git
-  snapshots and mismatched paths before changing the manifest:
-
-  ```bash
-  PLUGIN_CREATOR="${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator"
-  python3 "$PLUGIN_CREATOR/scripts/update_local_plugin.py" extension \
-    --marketplace isabelle-formal-modeling-dev --preflight
-  python3 "$PLUGIN_CREATOR/scripts/update_local_plugin.py" extension \
-    --marketplace isabelle-formal-modeling-dev
-  ```
-
-  The updater verifies the cachebusted installed version and restores the
-  source manifest to its release version. Start a new thread only after that
-  verification. To return to production, remove
-  `isabelle-formal-modeling@isabelle-formal-modeling-dev` and reinstall it
-  from `isabelle-formal-modeling-tooling`. This route is Codex-only; Claude
-  Code continues to use `extension/.mcp.json` and its existing marketplace
-  commands.
-
-Immutable tag
-: A marketplace pinned with `#vX.Y.Z` (Claude Code) or `--ref vX.Y.Z` (Codex
-  CLI) cannot advance: `marketplace update`/`upgrade` sees no change on an
-  immutable ref. To move, remove the plugin and the marketplace and add them
-  again at the new tag. Both hosts key the marketplace by the name in its
-  manifest, so two refs of this repository cannot be registered side by side.
-
-Home directory
-: Installing the extension writes only through the host's own mechanism:
-  Claude Code under `~/.claude/plugins/` (cache, marketplaces, registry
-  files); Codex CLI under `~/.codex/plugins/cache/`,
-  `~/.codex/.tmp/marketplaces/`, `[plugins.*]` and `[marketplaces.*]` entries
-  in `~/.codex/config.toml`, and the worker profile in `~/.codex/agents/`.
-  Everything else the workflow writes under the home directory is Isabelle's,
-  jEdit's, or I/Q's (see Prerequisites), or Isabelle's own state under
-  `ISABELLE_HOME_USER`.
-
-### Cutting a release
-
-From a clean clone on the source branch, with `X.Y.Z` as the `version` in
-both extension manifests:
-
-```bash
-scripts/release.sh vX.Y.Z --push
-```
-
-This builds a release commit on the `release` branch (the source tree at
-`HEAD` plus `extension/REVISION`), tags it `vX.Y.Z`, and pushes the source
-branch, `release`, and the tag. Do not pipe the script into `head`; it must
-run to completion.
+Until extension v0.7.1 the tooling was also delivered as a Claude Code and
+Codex CLI plugin, from a `release` branch with its own marketplaces and a
+release script. That route was removed after the project files replaced it;
+the `v0.x` tags keep it, and it can be restored from Git. Doctor still fails
+while either host has an Isabelle plugin or its marketplace installed, since
+it would duplicate the project's files.
 
 ## Binding a project: the descriptor
 
@@ -463,15 +359,17 @@ make check-isabelle   # export-check fixtures and the model runner, against a re
 ```
 
 Host fixtures (a fresh session driving the setup skill, a doctor run, an
-`isabelle build`) are run non-interactively: `claude -p ...` with the plugin
-installed or `--plugin-dir extension`, and `codex exec -C <checkout> ...`.
+`isabelle build`) are run non-interactively in a checkout that has the
+project files: `claude -p ...`, and `codex exec -C <checkout> ...` once the
+checkout is trusted.
 Under Codex, pass `-c model_reasoning_effort=medium` for these runs; the
 user's default of `xhigh` turns a two-minute fixture into a ten-minute one and
 adds nothing to a smoke check. Run them in the background with a timeout.
 
 The Phase 4 host fixture, `tests/host/phase4-fixture.sh claude|codex WORKDIR`,
-copies the C project in `tests/fixtures/host/fee/` into a fresh checkout and
-drives one host through two turns: setup and the conventions interview, then
+copies the C project in `tests/fixtures/host/fee/` into a fresh checkout,
+installs the project files with `isabelle-tooling init`, and drives one host
+through two turns: setup and the conventions interview, then
 the user's answers and the whole method (model, differential test, one
 proved property, assurance section). `tests/host/phase4-check.sh PROJECT`
 then runs the mechanical acceptance (doctor, settled conventions, clean

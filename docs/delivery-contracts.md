@@ -302,7 +302,7 @@ or drops a skill installs or removes it without code changes.
   each copied whole from `extension/skills/` at the pin, with their Claude
   aliases.
 - `.claude/agents/ic2-prover.md`, from `extension/agents/ic2-prover.md`.
-- `.codex/agents/ic2_prover.toml`, from `extension/codex/ic2_prover.toml`.
+- `.codex/agents/ic2_prover.toml`, from `extension/agents/ic2_prover.toml`.
 - In `.mcp.json`, the member `/mcpServers/iq`:
 
   ```json
@@ -346,8 +346,9 @@ or drops a skill installs or removes it without code changes.
 
 The server name `iq` is fixed. The Claude worker profile's
 `disallowedTools: mcp__iq` matches exactly the tools of a server named
-`iq`. That rule does not match a plugin-provided server, whose tools are
-named `mcp__plugin_<plugin>_iq__*` (documented; to confirm in the fixtures).
+`iq`. It would not have matched the retired plugin's server, whose tools
+were named `mcp__plugin_<plugin>_iq__*`; with the project server, the
+step-4 fixtures found that a Claude Code worker sees no I/Q tools.
 The Codex profile disables `iq` by the same name, but Codex CLI 0.155 does
 not honour that for a spawned agent: the step-4 fixtures found the main
 session's I/Q tools listed to the worker, spawned with or without the

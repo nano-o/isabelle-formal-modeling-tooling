@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Phase 4 host fixture: a fresh project holding one small C function, driven
-# end to end by an agent host that has only the installed extension and the
-# tooling clone. Two turns: the host holds the conventions interview and
+# end to end by an agent host that has only the project files `isabelle-tooling
+# init` installs and the tooling clone. Two turns: the host holds the conventions interview and
 # stops; the fixture answers as the user; the host then models, tests, and
 # proves. Afterwards phase4-check.sh verifies the artifacts. Run separately
 # per host; one host consuming the other's artifacts is not a parity test.
 #
 # Usage: phase4-fixture.sh claude|codex WORKDIR [--session NAME] [--turn 1|2|both]
 #
-# Needs ISABELLE_TOOLING_ROOT in the environment (the hosts read it too), a
-# real Isabelle, and the extension installed in the chosen host. Costs two
-# model runs of the host; expect tens of minutes.
+# Needs ISABELLE_TOOLING_ROOT in the environment (the hosts read it too),
+# naming the tooling clone at `stable`, which init pins, and a real Isabelle.
+# Codex CLI reads the project's .codex/config.toml only once WORKDIR/fee is
+# trusted. Costs two model runs of the host; expect tens of minutes.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -43,20 +44,23 @@ if [[ "$TURN" == both || "$TURN" == 1 ]]; then
   git -C "$PROJECT" init -q
   git -C "$PROJECT" -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false add -A
   git -C "$PROJECT" -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false commit -q -m "fee: initial C source"
+  (cd "$PROJECT" && "$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" init --session "$SESSION") >"$LOGS/init.out"
+  git -C "$PROJECT" -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false add -A
+  git -C "$PROJECT" -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false commit -q -m "Add the Isabelle tooling"
 fi
 
 TURN1="$(cat <<PROMPT
-You are in a fresh checkout of a small C project (src/fee.h, src/fee.c) with no
-formal artifacts yet. Use the skills of the installed isabelle-formal-modeling
-extension throughout; the tooling clone is \$ISABELLE_TOOLING_ROOT.
+You are in a fresh checkout of a small C project (src/fee.h, src/fee.c). The
+Isabelle tooling's project files and an empty session $SESSION under formal/
+are installed and committed, with the source at the checkout root. Use the
+project's Isabelle skills throughout; the tooling clone is
+\$ISABELLE_TOOLING_ROOT.
 
 Do these two things, then stop and report:
 
-1. Set up Isabelle formal modelling for this checkout with the isabelle-setup
-   skill: session name $SESSION, formal artifacts under formal/, source at the
-   checkout root. Run doctor and make sure the empty session builds. Every
-   step that would touch the home directory is already done on this machine;
-   report if doctor disagrees.
+1. Finish the setup with the isabelle-setup skill: run doctor and make sure
+   the empty session builds. Every step that would touch the home directory
+   is already done on this machine; report if doctor disagrees.
 
 2. Begin the isabelle-modeling skill for the two functions in src/fee.c, but
    only as far as the conventions interview: write the interview questions, with

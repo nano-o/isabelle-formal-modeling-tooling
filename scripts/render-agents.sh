@@ -10,7 +10,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/common.sh"
 
 SOURCE="$TOOLING_ROOT/agents/ic2-prover.instructions.md"
 CLAUDE_TARGET="$TOOLING_ROOT/extension/agents/ic2-prover.md"
-CODEX_TARGET="$TOOLING_ROOT/extension/codex/ic2_prover.toml"
+CODEX_TARGET="$TOOLING_ROOT/extension/agents/ic2_prover.toml"
 DESCRIPTION="Autonomous Isabelle proof worker for an already-created dedicated ic2 Git worktree. Delegate a proof target to it once a coordinating agent has created that worktree. Never use it for work in the main jEdit worktree."
 
 render_claude() {

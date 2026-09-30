@@ -231,5 +231,3 @@ through I/Q there.
   coordinator reviews its report and commits in its worktree as
   `AGENT_BOARD_AGENT=<coordinator> git -C <worktree> commit ...`. ic2's own
   start and stop notes are allowed in either mode.
-
-Skill revision marker: v0.7.1.

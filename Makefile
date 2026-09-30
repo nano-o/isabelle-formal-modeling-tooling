@@ -31,7 +31,7 @@ help:
 
 validate:
 	./scripts/render-agents.sh --check
-	python3 -c 'import json,sys; [json.load(open(f)) for f in sys.argv[1:]]' .claude-plugin/marketplace.json extension/.claude-plugin/plugin.json extension/.mcp.json extension/.codex-plugin/plugin.json extension/codex/.mcp.json .agents/plugins/marketplace.json extension/project/*.json
+	python3 -c 'import json,sys; [json.load(open(f)) for f in sys.argv[1:]]' extension/project/*.json
 	python3 -c 'import ast,sys; [ast.parse(open(f).read(), f) for f in sys.argv[1:]]' $(PYTHON_FILES)
 	@for test_file in $(PYTHON_TEST_FILES); do \
 		PYTHONDONTWRITEBYTECODE=1 python3 "$$test_file" || exit 1; \

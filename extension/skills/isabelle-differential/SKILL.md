@@ -178,5 +178,3 @@ must have both sides produce.
 3. Implementation adapter that *produces* a result file from the same
    corpus. Comparator, structural checks, per-tag `OK` and `ERR` mutations.
 4. Widen tag by tag. Commit the golden file last.
-
-Skill revision marker: v0.7.1.

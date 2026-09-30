@@ -1000,3 +1000,27 @@ moved). `stable` fast-forwarded to it in the runtime clone, and the local
 offer-exchange checkout ran `update stable` (`cd6fc381b7`), with both
 doctors passing, and the demo followed (`52e33e9be5`). No host or project
 configuration names a removed path.
+
+**After step 6, 2026-09-29: two of its possible next steps.**
+agent-board `7dae935` lets the ref guard pass an update whose old and new
+values are equal. That is how `git worktree add -b` reports the new branch
+from the new worktree, where no agent is registered; an all-zero old value
+means "not verified", so an unverified deletion is still checked. A
+regression test in the board covers the owner and a foreign agent. In this
+repository, `245550f` makes `scripts/install-iq-plugin.sh` drop
+AutoCorrode's numbered steps, which start a plain `isabelle jedit`, and
+say to (re)start jEdit with `scripts/launch_jedit.sh`; a new test runs the
+script against a stand-in AutoCorrode checkout, including a failed build.
+
+The fixtures ran at `245550f` with agent-board `7dae935`, in the step-4
+environment, now with `AGENT_BOARD_ROOT` naming the board checkout under
+test. The mechanical checks passed as in step 6 (76 on the bare repository
+and 75 on the demo, all but the check of `init` at the previous `stable`).
+The installer, run against the real AutoCorrode Makefile into the fixtures'
+Isabelle user home, printed the launcher line and none of the numbered
+steps. On both hosts the worker smoke proof passed with no guard refusal,
+though neither coordinator took the path refused in step 6: Claude Code's
+created the worktree before the branch was claimed, and Codex's set
+`AGENT_BOARD_AGENT` on `git worktree add`. The behavioural scenarios and
+link mode were not rerun; no skill, instruction block, worker profile or
+link code changed. Splitting `isabelle-proving` remains deferred.

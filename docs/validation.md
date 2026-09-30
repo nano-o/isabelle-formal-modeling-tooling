@@ -57,3 +57,46 @@ Accepted
   `ic2_prover` despite its profile. Only the worker's instructions keep it
   from calling them (`11a6bcb`).
 : Each behavioural scenario ran once per host, not three times.
+
+## 2026-09-29: the plugin route removed
+
+Candidates
+: isabelle-formal-modeling-tooling `32d490a`, this commit's parent. The
+  fixtures ran at `a65609b`, which differs from it only in the plan's
+  History. AutoCorrode `dbd474f`, as before.
+: agent-board `bf1b1ff`, its `stable`, unchanged.
+
+Hosts
+: Claude Code 2.1.284 with claude-opus-5-5, in auto permission mode.
+: Codex CLI 0.155.1 with gpt-6-astra at medium reasoning effort, in the
+  workspace-write sandbox with automatic review.
+: Isabelle2025-2, Git 2.43, Python 3.12.3, on Linux.
+
+Setup
+: As on the first `stable`: a detached worktree of this repository at the
+  candidate as the runtime, with its own Isabelle user home and fresh host
+  configuration roots; the bare repository and the stellar-core-internal
+  clone with its `Demo` session.
+
+Passed
+: Installers, doctors and the command interface: 76 checks on the bare
+  repository and 75 on the stellar-core clone, all but the check of
+  `init` at the previous `stable`, whose doctor fails while the runtime is
+  at the candidate.
+: Updating to the candidate from the offer-exchange checkout as adopted in
+  step 5 (`9b5ba74cc6`) and from its commit before adoption
+  (`319fed13e0`).
+: On both hosts: the worker smoke proof through ic2 and the board; one copy
+  of each skill, worker profile and `iq` server from a subdirectory; I/Q
+  without the token; one digest route.
+
+Not rerun
+: The behavioural scenarios and link mode: the change leaves the board
+  skill, the instruction blocks, the worker profile's text and the link
+  code as they were validated.
+
+Observations
+: A ref guard started by `git worktree add -b` in the new worktree does
+  not know the coordinator's handle and refused its own claim; setting
+  `AGENT_BOARD_AGENT` works (agent-board, not this repository).
+: Codex CLI still lists the main session's I/Q tools to `ic2_prover` (F4).

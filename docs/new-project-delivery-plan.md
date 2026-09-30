@@ -690,8 +690,8 @@ session state; a passing file-copy check is not enough.
 
 ## Order of work
 
-Steps 1 to 3 were done on 2026-09-28 and steps 4 and 5 on 2026-09-29
-(see History); step 6 is pending.
+Steps 1 to 3 were done on 2026-09-28 and steps 4 to 6 on 2026-09-29 (see
+History).
 
 1. **Settle the contracts.** Record the ownership, project files, owned
    entry and block formats, root instruction handling, executable
@@ -992,3 +992,11 @@ Observations and possible next steps:
   call them.
 - Deferred by the user: splitting `isabelle-proving` so that delegating
   does not load the proof pitfalls (step 5's context observation).
+
+The validation record `a13a5ab` followed, with the mechanical checks rerun
+there (77 on the bare repository and 76 on the demo once `stable` had
+moved). `stable` fast-forwarded to it in the runtime clone, and the local
+`release` branch, which named the `v0.7.1` commit, was deleted. The
+offer-exchange checkout ran `update stable` (`cd6fc381b7`), with both
+doctors passing, and the demo followed (`52e33e9be5`). No host or project
+configuration names a removed path.

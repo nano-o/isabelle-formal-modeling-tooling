@@ -9,7 +9,8 @@ TEST_FILES := \
 	tests/start_ic2_test.sh \
 	tests/model_runner_test.sh \
 	tests/export_check_test.sh \
-	tests/board_notifier_test.sh
+	tests/board_notifier_test.sh \
+	tests/install_iq_plugin_test.sh
 ISABELLE_TEST_FILES := \
 	tests/isabelle/export_check_test.sh \
 	tests/isabelle/model_runner_test.sh

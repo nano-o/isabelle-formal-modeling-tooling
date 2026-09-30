@@ -127,7 +127,13 @@ if [[ "$DRY_RUN" == true ]]; then
   exit 0
 fi
 
-"${install_command[@]}"
+# AutoCorrode's install target ends with numbered steps that start a plain
+# `isabelle jedit`, which gives I/Q a random token. Drop those steps; the
+# rest of make's output passes through, and pipefail keeps its status.
+"${install_command[@]}" | awk '
+  /^To use the plugin:$/ { steps = 1; next }
+  steps && /^[0-9]+\. / { next }
+  { steps = 0; print; fflush() }'
 [[ -f "$PLUGIN_JAR" ]] || die "I/Q build did not install the expected JAR: $PLUGIN_JAR"
 
 stamp_tmp="$(mktemp "$PLUGIN_DIR/.iq_plugin.jar.stamp.XXXXXX")"
@@ -141,3 +147,6 @@ mv -f -- "$stamp_tmp" "$STAMP_FILE"
 trap - EXIT
 
 echo "Provenance:  $STAMP_FILE"
+echo "jEdit:       (re)start it with $TOOLING_ROOT/scripts/launch_jedit.sh;"
+echo "             a plain \`isabelle jedit\` gets a random I/Q token that the"
+echo "             project's iq server cannot use."

@@ -955,3 +955,40 @@ Observations:
   asked the session how to see the board, and it answered with `digest`.
 - Codex's sandbox refused the first board write (`.git` is read-only
   there) until automatic review allowed it, as in step 4.
+
+**Step 6, 2026-09-29: the plugin and release machinery removed.**
+`a65609b` deleted the two plugin manifests, the two marketplace files, the
+plugin-only `iq` declarations and `scripts/release.sh`; moved the Codex
+worker profile from `extension/codex/` to `extension/agents/`; dropped the
+skills' `v0.7.1` markers; turned the host-parity test into one for the
+project's two `iq` declarations; and made the Phase 4 host fixture install
+the project files with `init`. The README keeps one paragraph on the plugin
+route, whose code the `v0.x` tags keep.
+
+The fixtures ran at `a65609b` with agent-board `bf1b1ff`, in the step-4
+environment (the candidate worktree, its own Isabelle user home, fresh host
+configuration roots). The mechanical checks passed, 76 on the bare
+repository and 75 on the demo, except the one that pins the current
+`stable` (`19f79ff`): its doctor rightly fails while the runtime is at the
+candidate. Updating to the candidate passed from the offer-exchange
+checkout's step-5 state and from its pre-adoption commit `319fed13e0`. On
+both hosts: the worker smoke proof through ic2 and the board, from the
+root; from `formal/`, one copy of each skill, one `iq` server and one
+worker profile, and a read-only I/Q call; the Claude hook's digest at
+session start, and the digest the Codex coordinator ran. Not rerun, since
+nothing they exercise changed: the nine behavioural scenarios (the board
+skill, the instruction blocks and the worker profile's text are as in
+step 4) and link mode.
+
+Observations and possible next steps:
+
+- `git worktree add -b` of a branch the Claude Code coordinator had
+  claimed was refused: the ref guard runs in the new worktree, where no
+  agent is registered, so the handle was unknown. The branch had already
+  been created, and the coordinator added the worktree for it with
+  `AGENT_BOARD_AGENT` set. The board's Git reference covers a commit in
+  another agent's worktree but not this case; that is agent-board work.
+- Codex CLI again listed the 38 I/Q tools to its worker (F4), which did not
+  call them.
+- Deferred by the user: splitting `isabelle-proving` so that delegating
+  does not load the proof pitfalls (step 5's context observation).

@@ -1,5 +1,13 @@
 # Isolating Isabelle agents with JAI
 
+*Status: a design note written for the earlier layout, in which the tooling
+lived in the project under `formal/tooling/` and ic2 ran in one Docker
+container per worktree (`formal/tooling/scripts/offer-exchange-ic2.sh`). The
+tooling now runs a native ic2 server per worktree from a separate clone (see
+the README), so the Docker broker sections no longer apply as written; the
+JAI policy, the credential rules and the I/Q sections still do. Paths such
+as `/path/to/project` are placeholders.*
+
 This document describes how to run proof agents under
 [JAI](https://jai.scs.stanford.edu/) without giving them Git credentials while
 preserving both supported OfferExchange workflows:
@@ -105,7 +113,7 @@ mode strict
 
 nocwd
 rdir ${PWD}
-rdir /home/nano/.config/isabelle-iq
+rdir /home/you/.config/isabelle-iq
 
 setenv IQ_MCP_BRIDGE_LOG_FILE=/tmp/iq-bridge.log
 
@@ -126,7 +134,7 @@ Start the agent from the repository root so the checked-in `.codex/config.toml`
 and its relative bridge path resolve correctly:
 
 ```bash
-cd /home/nano/Documents/isabelle-offer-exchange
+cd /path/to/project
 jai -C codex-iq codex
 ```
 
@@ -169,14 +177,14 @@ Run that jail from `formal/`, so its default read/write grant covers only the
 formal tree:
 
 ```bash
-cd /home/nano/Documents/isabelle-offer-exchange/formal
+cd /path/to/project/formal
 jai -mstrict -j isabelle-jedit \
-  -r /home/nano/.config/isabelle-iq \
+  -r "$HOME/.config/isabelle-iq" \
   tooling/scripts/launch_jedit.sh \
     --project . \
     --session OfferExchange \
     --venv tooling/.venv \
-    --token-file /home/nano/.config/isabelle-iq/auth-token \
+    --token-file "$HOME/.config/isabelle-iq/auth-token" \
     OfferExchange/Offer_Exchange_Lifecycle.thy
 ```
 
@@ -213,8 +221,8 @@ Git metadata or remote authentication:
 For example, outside the worker jail:
 
 ```bash
-MAIN=/home/nano/Documents/isabelle-offer-exchange
-WT=/home/nano/Documents/isabelle-worktrees/offer-proof-1
+MAIN=/path/to/project
+WT=/path/to/worktrees/offer-proof-1
 BRANCH=ic2-offer-proof-1
 
 git -C "$MAIN" worktree add -b "$BRANCH" "$WT" HEAD
@@ -232,8 +240,8 @@ Give the worker read access to the whole assigned checkout and write access
 only to its `formal/` subtree. Disable I/Q explicitly:
 
 ```bash
-MAIN=/home/nano/Documents/isabelle-offer-exchange
-WT=/home/nano/Documents/isabelle-worktrees/offer-proof-1
+MAIN=/path/to/project
+WT=/path/to/worktrees/offer-proof-1
 BROKER_DIR=/run/user/1000/jai-ic2/offer-proof-1
 
 jai -D -mstrict -j ic2-offer-proof-1 \

@@ -19,20 +19,19 @@ that document disagree, the contracts win.
 
 This plan was moved on 2026-09-28 from the last section of
 `formal/docs/isabelle-tooling-extraction-plan.md` in the offer-exchange
-checkout (`~/Documents/isabelle-offer-exchange`), which keeps Phases 0–4,
+checkout, which keeps Phases 0–4,
 the earlier design and its history. "The extraction plan" below means
 that document.
 
 ## Goal and definition of done
 
-Two local repositories on this machine, each usable alone or with the other
-in a new project:
+Two local repositories, each usable alone or with the other in a new
+project:
 
-- the Isabelle tooling, in the existing clone at
-  `~/Documents/isabelle-formal-modeling-tooling`, delivered to projects as
-  committed project-local files instead of through host marketplaces;
-- `agent-board`, a new local repository at `~/Documents/agent-board`,
-  extracted from the tooling.
+- the Isabelle tooling, in its existing runtime clone, delivered to
+  projects as committed project-local files instead of through host
+  marketplaces;
+- `agent-board`, a new local repository extracted from the tooling.
 
 Done means: starting from a new Git repository, with only the two clones, the
 pinned Isabelle release and one agent host installed, a user or their agent
@@ -47,8 +46,8 @@ offered through a marketplace as part of this plan. The tooling clone keeps
 its existing `origin` untouched; `agent-board` gets no remote. The
 offer-exchange checkout adopts the result at the end, like any other
 project; it is no longer the constraint the plan is organized around. Other
-checkouts with a descriptor, such as `~/code/thruput-hackathon`, are
-temporary experiments and are not migrated.
+checkouts with a descriptor are temporary experiments and are not
+migrated.
 
 ## Starting point
 
@@ -56,7 +55,7 @@ Tooling `main` at `5b0f349` (followed only by documentation commits,
 including this plan) contains the board implementation and its concurrency
 fixes, six skills (including `isabelle-coordination`), Claude
 digest hooks and Isabelle-specific board integration. The `release` branch
-still names v0.7.1. The separate `feedback-thruput-erc20` branch holds
+still names v0.7.1. A separate feedback branch holds
 unmerged feedback and instruction work: preserve it and account for it when
 moving files, but it is not part of this plan. Mentions of "five skills"
 below mean the Isabelle bundle after extraction.
@@ -589,8 +588,8 @@ shows, described in the extraction plan's §2), a new project runs:
 ```sh
 "$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" init --session NAME
 git add -- PATHS...                                    # as init printed
-~/Documents/agent-board/bin/agent-board init           # optional
-~/Documents/agent-board/bin/agent-board install-hook   # optional
+agent-board init                                       # optional
+agent-board install-hook                               # optional
 ```
 
 Depending on the host, the user then trusts the project in Codex CLI or
@@ -702,7 +701,7 @@ History).
    contracts design-reviewed, as the vendoring proposal was. Recheck the
    branches and upstream, preserve unrelated work including the feedback
    branch, and keep the AutoCorrode and Isabelle pins.
-2. **Extract the board.** Create `~/Documents/agent-board`, move the core
+2. **Extract the board.** Create the agent-board repository, move the core
    code, tests, docs, generic skill and host adapters, and record provenance
    and licenses. Keep the on-disk format, locking and verbs other than
    `migrate`; apply "No compatibility layer", including removing the board
@@ -789,8 +788,8 @@ hooks-directory finding was partly mistaken: `git rev-parse --git-path
 hooks` already follows `core.hooksPath`. It became the rule that guards are
 installed only inside the Git directory.
 
-**Step 2, 2026-09-28.** agent-board lives in `~/Documents/agent-board`, a
-local repository without a remote: an import commit holding the source
+**Step 2, 2026-09-28.** agent-board lives in its own local repository,
+without a remote: an import commit holding the source
 files unchanged (`f9aacb8`, recording provenance), the standalone
 adaptation with its tests (`b836c94`), and the Claude hook, generic skill
 and documentation (`b2ba4b2`), with the contracts' board part copied to
@@ -852,8 +851,7 @@ list:
   home.
 
 **Step 4, 2026-09-29: the fixtures.** By the user's choice the existing
-codebase was a clone of stellar-core-internal,
-`~/Documents/formal-offer-exchange-demo` (branch `formal-demo`, both
+codebase was a stellar-core clone (branch `formal-demo`, both
 components installed, session `Demo` holding the offer-exchange
 `bigDivideUnsigned` demo theory), beside a bare `git init` repository and,
 for adoption, a snapshot of the offer-exchange checkout at `319fed13e0`.
@@ -917,9 +915,9 @@ token left Claude Code's user settings. The runtime clone has `stable`
 checked out (`19f79ff`, AutoCorrode `dbd474f`), with ic2 rebuilt and the
 I/Q plugin reinstalled; `main` moved to the `-delivery` worktree and the
 merged `delivery` branch was deleted. The agent-board checkout also has
-`stable` (`bf1b1ff`), with `main` in `~/Documents/agent-board-main`.
-`ISABELLE_TOOLING_ROOT` is exported in the user's bashrc, and
-`agent-board` is linked from `~/.local/bin`.
+`stable` (`bf1b1ff`), with `main` in a linked worktree.
+`ISABELLE_TOOLING_ROOT` is exported in the user's shell profile, and
+`agent-board` is on `PATH`.
 
 In the checkout, `update stable` adopted the project files, and
 `agent-board init` and `install-hook` added the board; the user's

@@ -112,8 +112,9 @@ clone" that write under your home directory, and removing an installed
 Isabelle plugin, a user-level `iq` server or `ic2-prover` profile, which
 doctor names with the command to run.
 
-To coordinate several agents in the project, add agent-board, a separate
-tool with its own README: put `agent-board` on `PATH` (or set
+To coordinate several agents in the project, add
+[agent-board](https://github.com/nano-o/agent-board), a separate tool with
+its own README: put `agent-board` on `PATH` (or set
 `AGENT_BOARD_COMMAND`), run `agent-board init` and optionally
 `agent-board install-hook`, and commit what it printed. The two installers
 own disjoint files and can run in either order; stage what the first printed
@@ -383,3 +384,10 @@ See [docs/architecture.md](docs/architecture.md) for the process layout, and
 the standing notes [docs/security.md](docs/security.md) and
 [docs/jai-agent-isolation.md](docs/jai-agent-isolation.md), which describe the
 isolation design that this native workflow deliberately defers.
+
+## License
+
+Copyright 2026 Stellar Development Foundation. This repository is licensed
+under the [Apache License, Version 2.0](LICENSE); see [NOTICE](NOTICE).
+The AutoCorrode submodule is a separate project under its own license
+(MIT; see `AutoCorrode/LICENSE`).

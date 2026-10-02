@@ -26,8 +26,8 @@ Setup
 : The runtime was a detached worktree of this repository at the
   candidate, with its own Isabelle user home (`USER_HOME`) and fresh host
   configuration roots.
-: Fixtures: a bare `git init` repository; a clone of stellar-core-internal
-  with both components and a `Demo` session (by the user's choice, in
+: Fixtures: a bare `git init` repository; a stellar-core clone with both
+  components and a `Demo` session (by the user's choice, in
   place of a codebase other than stellar-core); and, for adoption, a
   snapshot of the offer-exchange checkout at `319fed13e0`.
 
@@ -75,8 +75,8 @@ Hosts
 Setup
 : As on the first `stable`: a detached worktree of this repository at the
   candidate as the runtime, with its own Isabelle user home and fresh host
-  configuration roots; the bare repository and the stellar-core-internal
-  clone with its `Demo` session.
+  configuration roots; the bare repository and the stellar-core clone with
+  its `Demo` session.
 
 Passed
 : Installers, doctors and the command interface: 76 checks on the bare

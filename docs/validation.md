@@ -142,3 +142,35 @@ Observations
 : Neither smoke coordinator claimed the branch and then created its
   worktree unaided, the path refused in step 6; the board's regression
   test covers it.
+
+## 2026-10-01: the Apache 2.0 license, and no machine paths in the docs
+
+Candidates
+: isabelle-formal-modeling-tooling `cabf405`, this commit's parent: the
+  Apache License 2.0 as `LICENSE`, a `NOTICE` naming the Stellar
+  Development Foundation as copyright holder, and the docs without local
+  paths or the names of private projects. AutoCorrode `dbd474f`, as
+  before.
+: agent-board `bc84193`, the same license and documentation change, with
+  its own copyright holder.
+
+Hosts
+: None: no host session ran, because nothing a host loads changed.
+: Isabelle2025-2, Git 2.43, Python 3.12.3, on Linux.
+
+Setup
+: As in the previous record, with the board checkout under test named by
+  `AGENT_BOARD_ROOT`. The stellar-core clone is now a clone of public
+  stellar-core `release/v29.0.0`, pinned at both candidates.
+
+Passed
+: `make validate`.
+: Installers, doctors and the command interface: 76 checks on the bare
+  repository and 75 on the stellar-core clone, all but the check of
+  `init` at the previous `stable`, whose doctors fail while the runtimes
+  are at the candidates.
+
+Not rerun
+: The behavioural scenarios, link mode and the worker smoke proof: only
+  `LICENSE`, `NOTICE`, the README and the docs changed, and no skill,
+  instruction block, worker profile, script or link code.

@@ -24,7 +24,9 @@ TOOLING_ROOT = Path(__file__).resolve().parents[1]
 DESCRIPTOR = 'isabelle-tooling.conf'
 REQUIRED_KEYS = ('format_version', 'source_rel', 'formal_rel', 'build_session', 'session_dir',
                  'ic2_base_session', 'isabelle_version')
-OPTIONAL_KEYS = ('tooling_revision', 'ic2_max_heap', 'export_name', 'model_dispatch', 'audit_collection')
+OPTIONAL_KEYS = ('tooling_revision', 'ic2_max_heap', 'export_name', 'model_dispatch', 'audit_collection',
+                 'model_kind')
+KINDS = ('code', 'theory')
 PATH_KEYS = ('source_rel', 'formal_rel', 'session_dir', 'model_dispatch')
 
 
@@ -39,6 +41,8 @@ def parse_descriptor(text, where=DESCRIPTOR):
             raise Refused(f'{where}: missing required key: {key}')
     if values['format_version'] != '1':
         raise Refused(f"{where}: unsupported format_version: {values['format_version']} (expected 1)")
+    if values.get('model_kind', 'code') not in KINDS:
+        raise Refused(f"{where}: unknown model_kind: {values['model_kind']} (expected {' '.join(KINDS)})")
     for key in PATH_KEYS:
         value = values.get(key)
         if value is None:
@@ -65,6 +69,10 @@ class ToolingSpec:
     def substitutions(self, values):
         return {'FORMAL_REL': values['formal_rel']}
 
+    def kind(self, values):
+        """Absent means code; only a descriptor that names its kind needs a revision with kinds."""
+        return values.get('model_kind')
+
 
 # --- skills list and show ----------------------------------------------------------------------
 
@@ -77,7 +85,9 @@ def nearest_descriptor(start):
 
 
 def skill_revision(spec, project_root):
-    """The revision skills are read from: the project's pin, else `stable`. Never a working tree."""
+    """The revision skills are read from, where it comes from, and the project's kind (None outside a project).
+
+    The revision is the project's pin, else `stable`; never a working tree."""
     if project_root:
         descriptor = Path(project_root) / DESCRIPTOR
         if not descriptor.is_file():
@@ -85,23 +95,24 @@ def skill_revision(spec, project_root):
     else:
         descriptor = nearest_descriptor(os.getcwd())
     if descriptor is None:
-        return spec.runtime.commit('stable'), 'stable'
+        return spec.runtime.commit('stable'), 'stable', None
     values = parse_descriptor(descriptor.read_text(), str(descriptor))
     revision = values.get('tooling_revision', '')
     if not project_files.FULL_REVISION.fullmatch(revision):
         raise Refused(f'{descriptor}: tooling_revision must be a full 40-hex commit, found {revision!r}')
     if not spec.runtime.has(revision):
         raise Broken(f'the pinned commit {revision} is missing from {spec.runtime.path}')
-    return revision, f'pinned by {descriptor}'
+    return revision, f'pinned by {descriptor}', values.get('model_kind', 'code')
 
 
 def manifest_skills(spec, revision):
+    """The supported kinds (empty before kinds), and (name, source, kinds) per skill; kinds None means all."""
     import json
     try:
         manifest = json.loads(spec.runtime.blob(revision, spec.manifest))
     except Broken:
         raise Broken(f'{revision} has no {spec.manifest}') from None
-    return [(s['name'], s['source']) for s in manifest.get('skills', [])]
+    return manifest.get('kinds', []), [(s['name'], s['source'], s.get('kinds')) for s in manifest.get('skills', [])]
 
 
 def description(text):
@@ -116,16 +127,21 @@ def description(text):
 
 
 def skills(args, spec):
-    revision, where = skill_revision(spec, args.project_root)
-    available = manifest_skills(spec, revision)
+    revision, where, kind = skill_revision(spec, args.project_root)
+    supported, available = manifest_skills(spec, revision)
     if args.skills_action == 'list':
-        out = f'isabelle-tooling skills at {revision} ({where})\n'
-        for name, source in available:
+        # Each skill's kinds, once the revision has kinds; in a project, the skills its kind leaves out.
+        here = kind is not None and kind in supported
+        out = f'isabelle-tooling skills at {revision} ({where})' + (f', for a {kind} project' if here else '') + '\n'
+        for name, source, kinds in available:
             text = spec.runtime.blob(revision, f'{source}/SKILL.md').decode()
-            out += f'{name}: {description(text)}\n'
+            notes = ', '.join(kinds or supported)
+            if here and kinds and kind not in kinds:
+                notes += '; not installed here'
+            out += f'{name}' + (f' [{notes}]' if supported else '') + f': {description(text)}\n'
         sys.stdout.write(out)
         return 0
-    source = dict(available).get(args.name)
+    source = {name: source for name, source, _ in available}.get(args.name)
     if source is None:
         print(f'isabelle-tooling: no skill named {args.name!r} at {revision}; `isabelle-tooling skills list` '
               'names them', file=sys.stderr)
@@ -144,7 +160,8 @@ def scaffold(revision, args, root):
     with tempfile.TemporaryDirectory(prefix='isabelle-tooling-init.') as stage:
         command = [str(TOOLING_ROOT / 'scripts/new-project.sh'), '--revision', revision, '--stage', stage,
                    '--session', args.session, '--project-name', args.project_name or root.name,
-                   '--formal-rel', args.formal_rel, '--source-rel', args.source_rel, '--max-heap', args.max_heap]
+                   '--formal-rel', args.formal_rel, '--source-rel', args.source_rel, '--max-heap', args.max_heap,
+                   '--kind', args.kind]
         result = subprocess.run(command, capture_output=True, text=True)
         if result.returncode:
             raise Broken(result.stderr.strip().removeprefix('ERROR: ') or 'new-project.sh failed')
@@ -204,6 +221,8 @@ def parser():
     q.add_argument('--source-rel', default='.', help='code under study, relative to the checkout (.)')
     q.add_argument('--project-name', help='name used in generated text (default: the checkout directory name)')
     q.add_argument('--max-heap', default='12G', help='ic2 prover memory bound (12G)')
+    q.add_argument('--kind', choices=KINDS, default='code', help='code (default): a model of an implementation; '
+                   'theory: Isabelle theories with no implementation to model')
     q = sub.add_parser('sync', parents=[common], help='Reinstall the pinned project files; --link symlinks the '
                        'skills to --source; --check only checks')
     q.add_argument('--link', action='store_true')

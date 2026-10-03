@@ -5,11 +5,11 @@ description: Set up and check the Isabelle formal-modeling tooling for a project
 
 # Setting up Isabelle for a project
 
-The tooling reaches a project as committed files: this skill and the other
-four under `.agents/skills/` (Claude Code sees them through
-`.claude/skills/`), the `ic2-prover` worker profiles, the project's `iq` MCP
-server in `.mcp.json` and `.codex/config.toml`, and a block in the root
-`AGENTS.md`. `isabelle-tooling init` installed them before this session
+The tooling reaches a project as committed files: this skill and the others
+the project's kind installs, under `.agents/skills/` (Claude Code sees them
+through `.claude/skills/`), the `ic2-prover` worker profiles, the project's
+`iq` MCP server in `.mcp.json` and `.codex/config.toml`, and a block in the
+root `AGENTS.md`. `isabelle-tooling init` installed them before this session
 started, pinned at the commit recorded as `tooling_revision` in
 `isabelle-tooling.conf`. You never install or configure the agent host
 itself. Every step below reads, runs a tooling command, or *shows* the user
@@ -39,6 +39,11 @@ needs. Keep that clone at the `stable` branch and develop the tooling in a
 separate worktree of it. If `AutoCorrode/ic2/etc/build.props` is missing,
 the submodule is not populated: show
 `git -C "$ISABELLE_TOOLING_ROOT" submodule update --init`.
+
+If every tooling command, doctor included, stops with `unknown key:
+model_kind`, the project is a theory project (§6) and the clone predates
+project kinds: it must be checked out at the project's `tooling_revision`,
+as above.
 
 ## 2. Locate Isabelle
 
@@ -107,11 +112,22 @@ token".
 
 If the checkout has no `isabelle-tooling.conf` yet, the user runs, before a
 host session starts there (ask for the session name, an Isabelle identifier,
-and where the formal artifacts go: default `formal/`, code at `.`):
+the project's kind, and where the formal artifacts go: default `formal/`,
+code at `.`):
 
 ```bash
-"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" init --session <Name> [--formal-rel formal] [--source-rel .]
+"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" init --session <Name> [--kind code|theory] [--formal-rel formal] [--source-rel .]
 ```
+
+The kind is what the project models. `code`, the default, is a model of an
+implementation: the project gets all five skills and a session that imports
+`HOL-Library.Word`. `theory` is for Isabelle theories with no
+implementation to model, such as a protocol specification or mathematics:
+the project gets only this skill and `isabelle-proving`, and a session that
+imports only `Main`. When the checkout has no code under study, ask the
+user whether it is a theory project. The descriptor records a theory
+project as `model_kind=theory`; changing the kind later is a migration,
+described in the tooling's README.
 
 It creates the descriptor and `<formal>/{ROOTS,AGENTS.md,README.md,
 CLAUDE.md -> AGENTS.md}` and `<formal>/<Name>/{ROOT,<Name>.thy}`, installs
@@ -154,10 +170,11 @@ isabelle build -D <formal>
 
 Doctor reads only; it prints remediation commands and runs none. Fix what it
 reports, in order, then rerun it. A green doctor and a building empty
-session is the finished setup. Then hand over to `isabelle-modeling` (the
-conventions interview comes first), `isabelle-proving`,
-`isabelle-differential`, and `isabelle-assurance` for the statement of what
-was established.
+session is the finished setup. Then hand over: in a code project to
+`isabelle-modeling` (the conventions interview comes first),
+`isabelle-proving`, `isabelle-differential`, and `isabelle-assurance` for
+the statement of what was established; in a theory project to
+`isabelle-proving`.
 
 ## Several agents: the coordination board
 

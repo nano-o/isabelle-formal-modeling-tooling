@@ -1,8 +1,10 @@
 # Isabelle formal-modeling tooling
 
-Host-side tooling for projects that build a bit-precise Isabelle/HOL model of
-an implementation and prove properties about it. It provides one pinned
-Isabelle workflow for a project checkout: a native [ic2](AutoCorrode/ic2)
+Host-side tooling for Isabelle/HOL projects, with a method for those that
+build a bit-precise model of an implementation and prove properties about
+it, and the same infrastructure for theory projects, which have no
+implementation to model. It provides one pinned Isabelle workflow for a
+project checkout: a native [ic2](AutoCorrode/ic2)
 server per Git worktree for headless checking, queries, and I/R proof REPLs;
 the Isabelle/jEdit launcher with the I/Q agent plugin for interactive work; a
 setup checker; and the scripts that build the pieces. It targets Linux hosts
@@ -95,14 +97,18 @@ git add -A -- PATHS...                                                    # the 
 git commit -m "Add the Isabelle tooling"
 ```
 
+For a theory project, one with no implementation to model, such as a
+protocol specification or mathematics, add `--kind theory` to `init` (see
+"Project kinds" below).
+
 `init` writes the descriptor `isabelle-tooling.conf` pinned at `stable`, an
-empty session under `formal/`, and the project files: the five skills under
-`.agents/skills/` (Claude Code sees them through `.claude/skills/`), the
-`ic2-prover` worker profiles in `.claude/agents/` and `.codex/agents/`, the
-`iq` MCP server in `.mcp.json` and in a managed block of
-`.codex/config.toml`, and a short block in the root `AGENTS.md` (with
-`CLAUDE.md` pointing at it) that sends agents to `formal/AGENTS.md` and the
-skills. Nothing in them names a machine path.
+empty session under `formal/`, and the project files: the skills of the
+project's kind under `.agents/skills/` (Claude Code sees them through
+`.claude/skills/`), the `ic2-prover` worker profiles in `.claude/agents/`
+and `.codex/agents/`, the `iq` MCP server in `.mcp.json` and in a managed
+block of `.codex/config.toml`, and a short block in the root `AGENTS.md`
+(with `CLAUDE.md` pointing at it) that sends agents to `formal/AGENTS.md`
+and the skills. Nothing in them names a machine path.
 
 Then trust the project in Codex CLI, or approve the `iq` server at the first
 Claude Code start, start a session and ask the agent to finish the setup:
@@ -145,6 +151,68 @@ A project whose descriptor predates project files adopts them with
 already there. The contracts behind all of this are in
 [docs/delivery-contracts.md](docs/delivery-contracts.md).
 
+## Project kinds
+
+A project is one of two kinds, recorded in its descriptor:
+
+- `code`, the default, models an implementation. It gets all five skills, a
+  session whose entry theory imports `HOL-Library.Word`, and a conventions
+  block in `formal/AGENTS.md` for the code-level model.
+- `theory`, from `init --kind theory`, is for Isabelle theories with no
+  implementation to model. It gets `isabelle-setup` and `isabelle-proving`
+  only, the same worker profiles and `iq` server, a blank session that
+  imports `Main` (its `ROOT` still makes `HOL-Library` importable), and a
+  `formal/AGENTS.md` without conventions. The project supplies its own
+  method. The descriptor says `model_kind=theory`.
+
+`sync`, `update` and doctor recompute the expected files from the kind on
+every run. A tooling clone older than project kinds refuses a theory
+project's descriptor: every command, doctor included, stops with `unknown
+key: model_kind` and changes nothing. The clone must be checked out at the
+project's pin. For the same reason `update` refuses to move a theory
+project to a revision from before kinds.
+
+**Changing a project's kind** is a migration, not just a key edit: `init`
+renders `formal/AGENTS.md`, `ROOT` and the entry theory once, and they keep
+the old kind's text. From code to theory:
+
+1. Set `model_kind=theory` in `isabelle-tooling.conf`. If `source_rel`
+   names an implementation directory that will go away, set it to `.`.
+2. Edit the project-owned files by hand, with the theory templates in
+   `templates/theory/` as the reference: in `formal/AGENTS.md`, remove the
+   "Conventions" section and the mentions of the code-level model and
+   differential testing, and keep "Notes specific to this project" and any
+   other project text; in `formal/README.md`, reword the sentence saying
+   that `AGENTS.md` carries the modelling conventions; in the entry theory,
+   remove the `text` block asking for one theory per source module and the
+   `HOL-Library.Word` import unless a theory still needs it; in `ROOT`,
+   reword the description and keep `sessions "HOL-Library"`.
+3. Run `isabelle-tooling sync`. It removes the three code-only skills and
+   their Claude aliases, and refuses if one of them was edited.
+4. Check that doctor passes and `isabelle build -D formal` succeeds, then
+   stage the edits and the removals and commit.
+
+From theory to code: remove `model_kind` (or set it to `code`) and run
+`sync`, which adds the three skills. Check that `ROOT` still lists
+`sessions "HOL-Library"`, since the code-level model imports
+`HOL-Library.Word`, and review the `ROOT` description and
+`formal/README.md`, which the theory template words for theories. The
+`isabelle-modeling` skill creates the conventions block in
+`formal/AGENTS.md` at its interview. Until the `sync`, in either direction,
+doctor reports the mismatch through `sync --check`.
+
+A project where `init` ran without `--kind` and nothing it wrote is
+committed yet can instead start over as a theory project. Stage, without
+committing, the descriptor, `.isabelle-tooling/`, the session files, the
+root `AGENTS.md` and `CLAUDE.md`, `.agents/`, `.claude/agents/`,
+`.claude/skills/`, `.codex/` and `.mcp.json`; run `isabelle-tooling
+remove`; delete the files `init` rendered under the formal directory from
+the index (`git rm --cached`) and from disk; stage what `remove` printed;
+then run `init --kind theory`. Deleting the untracked paths by hand instead
+would lose what the project added since, such as its own text in the root
+`AGENTS.md` or Claude Code's `.claude/settings.local.json`; `remove` deletes
+only what its inventory records.
+
 ## The extension directory
 
 `extension/` holds what projects receive: the `skills/` tree
@@ -153,7 +221,8 @@ theory-editing workflows and the proof discipline, `isabelle-modeling` for
 the code-level model standard and its conventions interview,
 `isabelle-differential` for testing an exported model against its
 implementation, `isabelle-assurance` for stating what the work
-establishes); the worker profiles `agents/ic2-prover.md` (Claude Code) and
+establishes; a theory project receives only the first two, as the
+manifest's `kinds` lists say); the worker profiles `agents/ic2-prover.md` (Claude Code) and
 `agents/ic2_prover.toml` (Codex CLI), both rendered from
 `agents/ic2-prover.instructions.md` by `scripts/render-agents.sh` (`make
 validate` fails when either is stale); `bin/iq-bridge.sh`, the `iq` server's
@@ -180,8 +249,9 @@ A project checkout carries one committed file at its root,
 `isabelle-tooling.conf`. It is data in a small `key=value` format — UTF-8, one
 key per line, full-line `#` comments, the value is everything after the first
 `=` — never sourced or passed to `eval`. The parser rejects duplicate keys,
-unknown keys, missing required keys, an unsupported `format_version`,
-absolute path values, and any `..` component.
+unknown keys, missing required keys, an unsupported `format_version`, a
+`model_kind` other than `code` or `theory`, absolute path values, and any
+`..` component.
 
 ```ini
 format_version=1
@@ -193,11 +263,16 @@ session_dir=MyProject     # relative to formal_rel
 ic2_base_session=HOL      # the logic ic2 starts from: never the project session
 ic2_max_heap=12G          # prover memory bound; optional
 isabelle_version=Isabelle2025-2
+model_kind=theory         # optional: a theory project; absent means code
 ```
 
 `source_rel` and `formal_rel` are independent, so an in-tree layout (`.` and
 `formal`) and an assurance repository that holds the theories and references
-the code (`X` and `.`) are the same mechanism. `ic2_base_session` is
+the code (`X` and `.`) are the same mechanism. A theory project has no code
+under study, and its `source_rel` is the checkout, `.`. `init` writes
+`model_kind` only for a theory project, because tooling revisions from
+before kinds refuse the key; an explicit `model_kind=code` is accepted but
+ties the project to revisions with kinds. `ic2_base_session` is
 deliberately not the project session: when the project session is the
 server's logic, its theories are heap nodes and ic2 cannot expose their
 per-command diagnostics or `sorry` positions after edits. Optional keys
@@ -279,7 +354,9 @@ supervised by HANDLE.`); both worker profiles describe the two modes.
 Differential testing is a method the `isabelle-differential` skill teaches,
 not a framework; the corpus, the validator, the mutation policy, and the
 implementation adapter are project code. Two pieces are the same for every
-project and live here.
+project and live here. They need an exported Isabelle program and an audit
+collection, not an implementation, so they work in either kind; only the
+skill, which compares against an implementation, is for code projects.
 
 `scripts/model-runner.sh` evaluates the exported code-level model over
 records. It builds the session, exports the code named by the descriptor's
@@ -334,7 +411,7 @@ imported theory.
 "$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" doctor [--project-root DIR] [--allow-dirty]
 ```
 
-Checks, in order: the descriptor and its roots; that `ISABELLE_TOOLING_ROOT`
+Checks, in order: the descriptor, the project's kind and its roots; that `ISABELLE_TOOLING_ROOT`
 names this clone; Isabelle and its version; the AutoCorrode submodule
 against the recorded gitlink; a clean tooling clone and submodule (modified
 scripts execute while `HEAD` still matches, so a dirty clone fails unless

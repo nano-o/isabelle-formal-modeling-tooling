@@ -5,9 +5,10 @@ Every test runs a scratch runtime checkout built from this working tree
 (without the AutoCorrode submodule): `stable` at its first commit, `next`
 one commit later with a supporting reference file in a skill and an edited
 skill. Projects are disposable, with isolated Git and host configuration.
-The rules shared with agent-board (scripts/project_files.py) are tested in
-depth there; these tests cover what the Isabelle tooling adds and the plan's
-installer cases.
+`before-kinds`, off `stable`, has the manifest and templates of a revision
+from before project kinds. The rules shared with agent-board
+(scripts/project_files.py) are tested in depth there; these tests cover what
+the Isabelle tooling adds and the plan's installer cases.
 """
 import hashlib
 import json
@@ -24,6 +25,8 @@ SOURCE = Path(__file__).resolve().parents[1]
 MODULE_DIR = SOURCE / 'scripts'
 SKILLS = ('isabelle-setup', 'isabelle-modeling', 'isabelle-proving', 'isabelle-differential',
           'isabelle-assurance')
+THEORY_SKILLS = ('isabelle-proving', 'isabelle-setup')
+CODE_ONLY = ('isabelle-assurance', 'isabelle-differential', 'isabelle-modeling')
 DRIVER = '''
 import sys
 sys.path.insert(0, sys.argv[1])
@@ -103,6 +106,16 @@ class ToolingTests(unittest.TestCase):
         cls.git_in(cls.runtime, 'add', '-A')
         cls.git_in(cls.runtime, 'commit', '-qm', 'next')
         cls.rev2 = cls.git_in(cls.runtime, 'rev-parse', 'HEAD').strip()
+        cls.git_in(cls.runtime, 'checkout', '-q', '-b', 'before-kinds', 'stable')
+        manifest_path = cls.runtime / 'extension/project/manifest.json'
+        manifest = json.loads(manifest_path.read_text())
+        del manifest['kinds']
+        for skill in manifest['skills']:
+            skill.pop('kinds', None)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
+        cls.git_in(cls.runtime, 'rm', '-rq', 'templates/theory')
+        cls.git_in(cls.runtime, 'commit', '-qam', 'before kinds')
+        cls.rev0 = cls.git_in(cls.runtime, 'rev-parse', 'HEAD').strip()
         cls.git_in(cls.runtime, 'checkout', '-q', 'main')
         cls.cli = cls.runtime / 'bin/isabelle-tooling'
 
@@ -164,6 +177,7 @@ class ToolingTests(unittest.TestCase):
         descriptor = self.read('isabelle-tooling.conf')
         self.assertIn(f'tooling_revision={self.rev1}\n', descriptor)
         self.assertIn('build_session=Demo\n', descriptor)
+        self.assertNotIn('model_kind', descriptor)
         for rel in ('formal/ROOTS', 'formal/AGENTS.md', 'formal/README.md', 'formal/Demo/ROOT', 'formal/Demo/Demo.thy'):
             self.assertTrue((self.project / rel).is_file(), rel)
             self.assertNotRegex(self.read(rel), '@[A-Z_]+@')
@@ -228,9 +242,17 @@ class ToolingTests(unittest.TestCase):
         self.assertIn(f'at {self.rev2} (pinned by {self.project}/isabelle-tooling.conf)', shown.err)
         listed = self.it('skills', 'list').out.splitlines()
         self.assertEqual(listed[0], f'isabelle-tooling skills at {self.rev2} (pinned by '
-                                    f'{self.project}/isabelle-tooling.conf)')
+                                    f'{self.project}/isabelle-tooling.conf), for a code project')
+        self.assertEqual([line.split(' [')[0] for line in listed[1:]], list(SKILLS))
+        self.assertIn('isabelle-setup [code, theory]: Set up and check the Isabelle', listed[1])
+        # A revision from before kinds lists the skills as it always did.
+        old = self.work / 'old'
+        old.mkdir()
+        self.git('init', '-q', cwd=old)
+        self.it('init', '--session', 'Old', '--revision', 'before-kinds', cwd=old)
+        listed = self.it('skills', 'list', cwd=old).out.splitlines()
+        self.assertTrue(listed[0].endswith('isabelle-tooling.conf)'), listed[0])
         self.assertEqual([line.split(':')[0] for line in listed[1:]], list(SKILLS))
-        self.assertIn('isabelle-setup: Set up and check the Isabelle', listed[1])
         unknown = self.it('skills', 'show', 'no-such-skill', code=1)
         self.assertEqual((unknown.stdout, 'skills list' in unknown.err), (b'', True))
         # No prover is needed to read.
@@ -376,6 +398,211 @@ class ToolingTests(unittest.TestCase):
         self.it('sync')
         self.assertEqual(self.git('status', '--porcelain'), '')
         self.check()
+
+    # --- project kinds --------------------------------------------------------------------------
+
+    def skill_dirs(self, root=None):
+        root = root or self.project
+        return tuple(sorted(os.listdir(root / '.agents/skills'))), tuple(sorted(os.listdir(root / '.claude/skills')))
+
+    def set_kind(self, kind):
+        """Edit the descriptor's model_kind as a user would; None removes it."""
+        lines = [line for line in self.read('isabelle-tooling.conf').splitlines(keepends=True)
+                 if not line.startswith('model_kind=')]
+        if kind:
+            at = next(i for i, line in enumerate(lines) if line.startswith('format_version=')) + 1
+            lines.insert(at, f'model_kind={kind}\n')
+        (self.project / 'isabelle-tooling.conf').write_text(''.join(lines))
+
+    def test_theory_init_installs_setup_and_proving_only(self):
+        self.it('init', '--session', 'Notes', '--kind', 'theory')
+        self.assertIn('\nmodel_kind=theory\n', self.read('isabelle-tooling.conf'))
+        self.assertNotIn('export_name', self.read('isabelle-tooling.conf'))
+        self.assertEqual(self.read('formal/Notes/Notes.thy'), 'theory Notes\n  imports Main\nbegin\n\nend\n')
+        self.assertIn('  sessions\n    "HOL-Library"\n', self.read('formal/Notes/ROOT'))
+        self.assertNotIn('Conventions', self.read('formal/AGENTS.md'))
+        self.assertEqual(self.skill_dirs(), (THEORY_SKILLS, THEORY_SKILLS))
+        for name in THEORY_SKILLS:
+            self.assertEqual((self.project / f'.agents/skills/{name}/SKILL.md').read_bytes(),
+                             self.blob(self.rev1, f'extension/skills/{name}/SKILL.md'))
+            self.assertEqual(os.readlink(self.project / f'.claude/skills/{name}'), f'../../.agents/skills/{name}')
+        self.assertEqual((self.project / '.claude/agents/ic2-prover.md').read_bytes(),
+                         self.blob(self.rev1, 'extension/agents/ic2-prover.md'))
+        self.assertEqual((self.project / '.codex/agents/ic2_prover.toml').read_bytes(),
+                         self.blob(self.rev1, 'extension/agents/ic2_prover.toml'))
+        self.assertIn('iq', json.loads(self.read('.mcp.json'))['mcpServers'])
+        self.assertIn('[mcp_servers.iq]', self.read('.codex/config.toml'))
+        agents = self.read('AGENTS.md')
+        self.assertIn('Isabelle theories under `formal/`', agents)
+        for name in CODE_ONLY:
+            self.assertNotIn(name, agents)
+        inventory = json.loads(self.read('.isabelle-tooling/inventory.json'))
+        self.assertEqual(inventory['directories'], [f'.agents/skills/{n}' for n in THEORY_SKILLS])
+        self.check()
+        listed = self.it('skills', 'list').out.splitlines()
+        self.assertTrue(listed[0].endswith('isabelle-tooling.conf), for a theory project'), listed[0])
+        self.assertTrue(listed[1].startswith('isabelle-setup [code, theory]: Set up'), listed[1])
+        self.assertTrue(listed[2].startswith('isabelle-modeling [code; not installed here]: '), listed[2])
+        self.assertEqual(sum('not installed here' in line for line in listed), 3)
+        self.assertIn('[OK]   A theory project; source root', self.doctor())
+        self.commit_all()
+        self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_a_project_without_a_kind_is_a_code_project(self):
+        self.it('init', '--session', 'Demo', '--kind', 'code')
+        self.assertNotIn('model_kind', self.read('isabelle-tooling.conf'))
+        self.assertEqual(self.skill_dirs(), (tuple(sorted(SKILLS)), tuple(sorted(SKILLS))))
+        listed = self.it('skills', 'list').out.splitlines()
+        self.assertTrue(listed[0].endswith(', for a code project'), listed[0])
+        self.assertTrue(listed[2].startswith('isabelle-modeling [code]: '), listed[2])
+        self.assertIn('[OK]   A code project; source root', self.doctor())
+        self.commit_all()
+        # An explicit model_kind=code installs the same files.
+        self.set_kind('code')
+        self.assertIn('Nothing changed', self.it('sync').out)
+        self.check()
+        self.assertIn('--kind', self.it('init', '--session', 'X', '--kind', 'other', code=2).err)
+        self.set_kind('plain')
+        self.assertIn('unknown model_kind: plain', self.it('sync', code=1).err)
+
+    def test_theory_link_mode_and_shared_alias(self):
+        self.it('init', '--session', 'Notes', '--kind', 'theory')
+        self.commit_all()
+        dev = self.work / 'dev'
+        self.git_in(self.runtime, 'worktree', 'add', '-q', '--detach', str(dev), 'HEAD')
+        self.addCleanup(self.git_in, self.runtime, 'worktree', 'remove', '--force', str(dev))
+        self.it('sync', '--link', '--source', str(dev))
+        links = {name: os.readlink(self.project / '.agents/skills' / name)
+                 for name in os.listdir(self.project / '.agents/skills')}
+        self.assertEqual(links, {name: f'{os.path.realpath(dev)}/extension/skills/{name}' for name in THEORY_SKILLS})
+        self.it('sync')
+        self.assertEqual(self.git('status', '--porcelain'), '')
+        self.check()
+        # A project whose .claude/skills is .agents/skills gets the two skills and no aliases.
+        shared = self.work / 'shared'
+        (shared / '.agents/skills').mkdir(parents=True)
+        (shared / '.claude').mkdir()
+        os.symlink('../.agents/skills', shared / '.claude/skills')
+        self.git('init', '-q', cwd=shared)
+        self.git('add', '-A', cwd=shared)
+        self.it('init', '--session', 'Notes', '--kind', 'theory', cwd=shared)
+        inventory = json.loads((shared / '.isabelle-tooling/inventory.json').read_text())
+        self.assertEqual((inventory['claude_skills'], inventory['symlinks']), ('shared', {}))
+        self.assertEqual(self.skill_dirs(shared), (THEORY_SKILLS, THEORY_SKILLS))
+        self.it('sync', '--check', cwd=shared)
+
+    def test_switching_a_project_between_kinds(self):
+        self.it('init', '--session', 'Demo')
+        # agent-board's files beside the tooling's: never touched by a switch.
+        board_skill = self.project / '.agents/skills/agent-coordination/SKILL.md'
+        board_skill.parent.mkdir()
+        board_skill.write_text('the board skill\n')
+        os.symlink('../../.agents/skills/agent-coordination', self.project / '.claude/skills/agent-coordination')
+        with open(self.project / 'AGENTS.md', 'a') as agents:
+            agents.write('\n<!-- BEGIN agent-board -->\nthe board block\n<!-- END agent-board -->\n')
+        self.commit_all()
+        before = snapshot(self.project)
+        # Code to theory, by the README's steps; the hand edits are left unstaged.
+        self.set_kind('theory')
+        (self.project / 'formal/AGENTS.md').write_text(
+            self.blob(self.rev1, 'templates/theory/formal/AGENTS.md').decode()
+            .replace('@PROJECT_NAME@', 'demo').replace('@SESSION@', 'Demo'))
+        readme = self.read('formal/README.md').replace('the project-specific modelling conventions', "the project's notes")
+        (self.project / 'formal/README.md').write_text(readme)
+        (self.project / 'formal/Demo/Demo.thy').write_text('theory Demo\n  imports Main\nbegin\n\nend\n')
+        root = self.read('formal/Demo/ROOT')
+        (self.project / 'formal/Demo/ROOT').write_text(
+            root.replace('"Code-level Isabelle/HOL model of demo and the properties proved about it."',
+                         '"Isabelle/HOL theories of demo."'))
+        edited = {'isabelle-tooling.conf', 'formal/AGENTS.md', 'formal/README.md', 'formal/Demo/Demo.thy',
+                  'formal/Demo/ROOT'}
+        self.assertIn('differs from what', self.check(1))
+        out = self.it('sync').out
+        for name in CODE_ONLY:
+            self.assertIn(f'.agents/skills/{name}/SKILL.md', out)
+            self.assertIn(f'.claude/skills/{name}', out)
+        self.assertEqual(self.skill_dirs(), (('agent-coordination',) + THEORY_SKILLS,) * 2)
+        self.check()
+        after = snapshot(self.project)
+        changed = {rel for rel in before.keys() | after.keys() if before.get(rel, ())[:3] != after.get(rel, ())[:3]}
+        removed = {rel for rel in changed if any(rel == f'{base}/{name}' or rel.startswith(f'.agents/skills/{name}/')
+                                                 for base in ('.agents/skills', '.claude/skills')
+                                                 for name in CODE_ONLY)}
+        self.assertEqual(changed - removed, edited | {'.isabelle-tooling/inventory.json'})
+        self.assertEqual(board_skill.read_text(), 'the board skill\n')
+        self.assertIn('<!-- BEGIN agent-board -->\nthe board block\n', self.read('AGENTS.md'))
+        self.commit_all()
+        self.assertEqual(self.git('status', '--porcelain'), '')
+        # And back to code: the three skills return.
+        self.set_kind(None)
+        self.it('sync')
+        self.assertEqual(self.skill_dirs(), (('agent-coordination',) + tuple(sorted(SKILLS)),) * 2)
+        self.check()
+
+    def test_an_edited_code_only_skill_blocks_the_switch_to_theory(self):
+        self.it('init', '--session', 'Demo')
+        self.commit_all()
+        (self.project / '.agents/skills/isabelle-modeling/SKILL.md').write_text('our own conventions\n')
+        self.git('add', '-A')
+        self.set_kind('theory')
+        err = self.it('sync', code=1).err
+        self.assertIn('edited managed file: .agents/skills/isabelle-modeling/SKILL.md', err)
+        self.assertEqual(self.skill_dirs(), (tuple(sorted(SKILLS)), tuple(sorted(SKILLS))))
+
+    def test_revisions_before_kinds(self):
+        # A theory project cannot move to a revision from before kinds, nor start at one.
+        self.it('init', '--session', 'Notes', '--kind', 'theory')
+        self.commit_all()
+        before = snapshot(self.project)
+        err = self.it('update', 'before-kinds', code=1).err
+        self.assertIn('this project is of kind theory', err)
+        self.assertIn(f'{self.rev0} does not support (it predates project kinds)', err)
+        self.assertEqual(snapshot(self.project), before)
+        other = self.work / 'other'
+        other.mkdir()
+        self.git('init', '-q', cwd=other)
+        err = self.it('init', '--session', 'Notes', '--kind', 'theory', '--revision', 'before-kinds', cwd=other,
+                      code=2).err
+        self.assertIn(f'{self.rev0} has no templates/theory/', err)
+        self.assertEqual(os.listdir(other), ['.git'])
+        # A code project moves there and back, and can start there.
+        self.it('init', '--session', 'Demo', '--revision', 'before-kinds', cwd=other)
+        self.assertEqual(self.skill_dirs(other), (tuple(sorted(SKILLS)), tuple(sorted(SKILLS))))
+        self.git('add', '-A', cwd=other)
+        self.it('update', 'stable', cwd=other)
+        self.git('add', '-A', cwd=other)
+        self.it('update', 'before-kinds', cwd=other)
+        self.assertIn(f'tooling_revision={self.rev0}\n', (other / 'isabelle-tooling.conf').read_text())
+
+    def test_replacing_an_uncommitted_code_scaffold(self):
+        self.commit_all()
+        self.it('init', '--session', 'Notes')
+        # Since init: the project's own instructions, and Claude Code's local settings.
+        (self.project / 'AGENTS.md').write_text('Project rules.\n\n' + self.read('AGENTS.md'))
+        (self.project / '.claude/settings.local.json').write_text('{"enabledMcpjsonServers": ["iq"]}\n')
+        self.git('add', '--', 'isabelle-tooling.conf', '.isabelle-tooling', 'formal', 'AGENTS.md', 'CLAUDE.md',
+                 '.agents', '.claude/agents', '.claude/skills', '.codex', '.mcp.json')
+        out = self.it('remove').out
+        self.git('rm', '-r', '-q', '--cached', '--', 'formal')
+        shutil.rmtree(self.project / 'formal')
+        command = next(line.strip() for line in out.splitlines() if line.strip().startswith('git add -A -- '))
+        subprocess.run(['bash', '-ec', command], cwd=self.project, env=self.env, check=True)
+        self.assertEqual(self.git('status', '--porcelain', '--untracked-files=all').splitlines(),
+                         ['A  AGENTS.md', 'A  CLAUDE.md', '?? .claude/settings.local.json'])
+        self.assertEqual(self.read('AGENTS.md'), 'Project rules.\n')
+        self.it('init', '--session', 'Notes', '--kind', 'theory')
+        self.git('add', '-A', '--', '.', ':!.claude/settings.local.json')
+        self.check()
+        fresh = self.work / 'fresh'
+        fresh.mkdir()
+        self.git('init', '-q', cwd=fresh)
+        self.it('init', '--session', 'Notes', '--kind', 'theory', '--project-name', 'demo', cwd=fresh)
+        mine = {k: v[:2] for k, v in snapshot(self.project).items()}
+        theirs = {k: v[:2] for k, v in snapshot(fresh).items()}
+        self.assertEqual(mine.pop('.claude/settings.local.json')[0], 'file')
+        self.assertEqual(self.read('AGENTS.md'), 'Project rules.\n\n' + (fresh / 'AGENTS.md').read_text())
+        mine.pop('AGENTS.md'), theirs.pop('AGENTS.md')
+        self.assertEqual(mine, theirs)
 
     # --- failures ---------------------------------------------------------------------------
 
@@ -553,6 +780,7 @@ class KindTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         sys.path.insert(0, str(MODULE_DIR))
+        sys.dont_write_bytecode = True
         import project_files
         cls.pf = project_files
         cls.tmp = tempfile.TemporaryDirectory(prefix='kinds-')

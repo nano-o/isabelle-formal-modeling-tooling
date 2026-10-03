@@ -13,7 +13,8 @@ TEST_FILES := \
 	tests/install_iq_plugin_test.sh
 ISABELLE_TEST_FILES := \
 	tests/isabelle/export_check_test.sh \
-	tests/isabelle/model_runner_test.sh
+	tests/isabelle/model_runner_test.sh \
+	tests/isabelle/template_build_test.sh
 TEST_SUPPORT_FILES := tests/test_lib.sh tests/fixtures/isabelle
 HOST_FIXTURE_FILES := tests/host/phase4-fixture.sh tests/host/phase4-check.sh
 PYTHON_TEST_FILES := tests/extension_manifest_test.py tests/project_install_test.py
@@ -28,7 +29,7 @@ help:
 	@echo "Targets:"
 	@echo "  validate   Parse, lint, and test the shell tooling; check rendered agent profiles"
 	@echo "  render     Re-render the host agent profiles from agents/ic2-prover.instructions.md"
-	@echo "  check-isabelle  Run the tests that need a real Isabelle: export-check fixtures, model runner"
+	@echo "  check-isabelle  Run the tests that need a real Isabelle: export-check fixtures, model runner, template builds"
 
 validate:
 	./scripts/render-agents.sh --check

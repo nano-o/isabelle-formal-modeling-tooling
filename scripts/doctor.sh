@@ -53,7 +53,7 @@ if resolve_error="$( (resolve_project "$requested_root") 2>&1 >/dev/null)"; then
   resolve_project "$requested_root"
   descriptor_ok=true
   ok "Project descriptor: $PROJECT_DESCRIPTOR"
-  ok "Source root $PROJECT_SOURCE_ROOT; formal root $PROJECT_FORMAL_ROOT"
+  ok "A ${PROJECT_CONF[model_kind]:-code} project; source root $PROJECT_SOURCE_ROOT; formal root $PROJECT_FORMAL_ROOT"
   session_dir="$PROJECT_FORMAL_ROOT/${PROJECT_CONF[session_dir]}"
   if [[ ! -f "$PROJECT_FORMAL_ROOT/ROOT" && ! -f "$PROJECT_FORMAL_ROOT/ROOTS" ]]; then
     problem "Formal root has no ROOT or ROOTS: $PROJECT_FORMAL_ROOT"

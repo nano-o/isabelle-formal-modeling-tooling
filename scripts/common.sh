@@ -68,7 +68,8 @@ hash_files() {
 # `=`. It is data, never sourced or passed to eval. Two relative roots make the
 # layout configuration rather than architecture: source_rel is where the code
 # under study lives and formal_rel is where the Isabelle session lives, both
-# relative to the checkout root.
+# relative to the checkout root. model_kind is code (the default when absent)
+# or theory, for a project with no implementation to model.
 
 DESCRIPTOR_FILE_NAME="isabelle-tooling.conf"
 DESCRIPTOR_REQUIRED_KEYS=(
@@ -77,7 +78,9 @@ DESCRIPTOR_REQUIRED_KEYS=(
 )
 DESCRIPTOR_OPTIONAL_KEYS=(
   tooling_revision ic2_max_heap export_name model_dispatch audit_collection
+  model_kind
 )
+DESCRIPTOR_KINDS=(code theory)
 # Keys whose values are paths relative to a root; they may not be absolute and
 # may not contain a `..` component.
 DESCRIPTOR_PATH_KEYS=(source_rel formal_rel session_dir model_dispatch)
@@ -96,6 +99,15 @@ descriptor_key_known() {
   local known
   for known in "${DESCRIPTOR_REQUIRED_KEYS[@]}" "${DESCRIPTOR_OPTIONAL_KEYS[@]}"; do
     [[ "$known" == "$key" ]] && return 0
+  done
+  return 1
+}
+
+descriptor_kind_known() {
+  local kind="$1"
+  local known
+  for known in "${DESCRIPTOR_KINDS[@]}"; do
+    [[ "$known" == "$kind" ]] && return 0
   done
   return 1
 }
@@ -159,6 +171,10 @@ parse_descriptor() {
   done
   [[ "${PROJECT_CONF[format_version]}" == "1" ]] ||
     die "$file: unsupported format_version: ${PROJECT_CONF[format_version]} (expected 1)"
+  if [[ -n "${PROJECT_CONF[model_kind]+set}" ]]; then
+    descriptor_kind_known "${PROJECT_CONF[model_kind]}" ||
+      die "$file: unknown model_kind: ${PROJECT_CONF[model_kind]} (expected ${DESCRIPTOR_KINDS[*]})"
+  fi
   for key in "${DESCRIPTOR_PATH_KEYS[@]}"; do
     [[ -n "${PROJECT_CONF[$key]+set}" ]] || continue
     check_descriptor_path "$file" "$key" "${PROJECT_CONF[$key]}"

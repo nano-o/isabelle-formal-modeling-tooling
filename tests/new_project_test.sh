@@ -46,10 +46,45 @@ mkdir "$assurance"
 [[ -f "$assurance/Model/ROOT" && -f "$assurance/AGENTS.md" ]] || fail "layout C files"
 grep -q '^source_rel=X$' "$assurance/isabelle-tooling.conf" || fail "layout C source_rel"
 
+# A code project, with or without --kind: no model_kind, the code-level scaffold.
+code="$TEST_TMP_DIR/code"
+mkdir "$code"
+"$SCRIPT" --revision "$revision" --stage "$code" --session Demo_Session --project-name "my project" --kind code
+diff -r "$stage" "$code" >/dev/null || fail "--kind code renders differently from the default"
+grep -q '^model_kind=' "$stage/isabelle-tooling.conf" && fail "a code descriptor names its kind"
+grep -q '"HOL-Library.Word"' "$stage/formal/Demo_Session/Demo_Session.thy" || fail "code: Word import"
+grep -q '^## Conventions$' "$stage/formal/AGENTS.md" || fail "code: conventions block"
+
+# A theory project: a blank session importing Main, HOL-Library importable, no conventions.
+theory="$TEST_TMP_DIR/theory"
+mkdir "$theory"
+"$SCRIPT" --revision "$revision" --stage "$theory" --session Notes --project-name "my paper" --kind theory
+for f in isabelle-tooling.conf formal/ROOTS formal/AGENTS.md formal/README.md formal/Notes/ROOT formal/Notes/Notes.thy; do
+  [[ -f "$theory/$f" ]] || fail "theory: missing $f"
+done
+[[ "$(readlink "$theory/formal/CLAUDE.md")" == "AGENTS.md" ]] || fail "theory: CLAUDE.md symlink"
+grep -rq '@[A-Z_]*@' "$theory" && fail "theory: unsubstituted placeholder"
+[[ "$(cat "$theory/formal/Notes/Notes.thy")" == "$(printf 'theory Notes\n  imports Main\nbegin\n\nend')" ]] ||
+  fail "theory: the entry theory is not the blank theory: $(cat "$theory/formal/Notes/Notes.thy")"
+grep -q '^session Notes = HOL +$' "$theory/formal/Notes/ROOT" || fail "theory: ROOT session line"
+grep -A1 '^  sessions$' "$theory/formal/Notes/ROOT" | grep -q '^    "HOL-Library"$' || fail "theory: ROOT lacks HOL-Library"
+grep -q 'Conventions\|code-level\|differential' "$theory/formal/AGENTS.md" && fail "theory: AGENTS.md names the code method"
+grep -q 'my paper' "$theory/formal/README.md" || fail "theory: project name substitution"
+grep -q '^model_kind=theory$' "$theory/isabelle-tooling.conf" || fail "theory: model_kind"
+grep -q 'export_name' "$theory/isabelle-tooling.conf" && fail "theory: the differential block"
+(
+  # shellcheck source=../scripts/common.sh disable=SC1091
+  source "$runtime/scripts/common.sh"
+  parse_descriptor "$theory/isabelle-tooling.conf"
+  [[ "${PROJECT_CONF[model_kind]}" == theory ]]
+) || fail "theory: the descriptor does not parse as a theory project"
+
 # Rejections.
 empty="$TEST_TMP_DIR/empty"
 mkdir "$empty"
 reject() { "$SCRIPT" "$@" >/dev/null 2>&1 && fail "accepted: $*"; return 0; }
+reject --revision "$revision" --stage "$empty" --session Ok --project-name p --kind other
+reject --revision "$revision" --stage "$empty" --session Ok --project-name p --kind
 reject --revision "$revision" --stage "$empty" --session 'bad name' --project-name p
 reject --revision "$revision" --stage "$empty" --session Ok --project-name p --formal-rel ../up
 reject --revision "$revision" --stage "$empty" --session Ok --project-name 'a|b'
@@ -58,5 +93,17 @@ reject --revision HEAD --stage "$empty" --session Ok --project-name p
 reject --revision "$(printf '0%.0s' {1..40})" --stage "$empty" --session Ok --project-name p
 reject --revision "$revision" --stage "$TEST_TMP_DIR/missing" --session Ok --project-name p
 [[ -z "$(ls -A "$empty")" ]] || fail "a rejected run wrote into the stage"
+
+# A revision from before theory projects: code renders, theory is refused by name.
+git -C "$runtime" rm -rq templates/theory
+git -C "$runtime" commit -qm "no theory templates"
+older="$(git -C "$runtime" rev-parse HEAD)"
+"$SCRIPT" --revision "$older" --stage "$empty" --session Ok --project-name p
+rm -rf "$empty" && mkdir "$empty"
+if output="$("$SCRIPT" --revision "$older" --stage "$empty" --session Ok --project-name p --kind theory 2>&1)"; then
+  fail "--kind theory accepted at a revision without templates/theory/"
+fi
+[[ "$output" == *"$older has no templates/theory/"* ]] || fail "--kind theory refusal: $output"
+[[ -z "$(ls -A "$empty")" ]] || fail "the refused theory render wrote into the stage"
 
 echo "new-project.sh tests passed"

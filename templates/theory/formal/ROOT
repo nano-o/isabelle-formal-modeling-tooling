@@ -1,0 +1,7 @@
+session @SESSION@ = HOL +
+  description "Isabelle/HOL theories of @PROJECT_NAME@."
+  options [timeout = 600, document = false]
+  sessions
+    "HOL-Library"
+  theories
+    @SESSION@

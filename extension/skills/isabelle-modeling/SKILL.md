@@ -31,8 +31,10 @@ in the model.
 Several representation choices are the user's, not yours. Before writing the
 first definition, ask these questions together, offer the defaults below with
 their reasons, and then write the answers into the `## Conventions` block of
-the project's `AGENTS.md` (the template from `isabelle-setup` already has the
-headings). That block is the review checklist for every later definition, so
+the project's `AGENTS.md`. A code project's template already has its
+headings; when the block is missing, as in a project that began as a theory
+project, add it before `## Editing theories`, one bullet per question below.
+That block is the review checklist for every later definition, so
 a later reviewer reads it before reading the theory. When you are not
 speaking to a live user (a non-interactive run), still write the questions
 and the defaults you took into the block, mark each answer `(default; not

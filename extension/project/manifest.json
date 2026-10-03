@@ -1,12 +1,13 @@
 {
   "format": 1,
   "component": "isabelle-tooling",
+  "kinds": ["code", "theory"],
   "skills": [
     {"name": "isabelle-setup", "source": "extension/skills/isabelle-setup"},
-    {"name": "isabelle-modeling", "source": "extension/skills/isabelle-modeling"},
+    {"name": "isabelle-modeling", "source": "extension/skills/isabelle-modeling", "kinds": ["code"]},
     {"name": "isabelle-proving", "source": "extension/skills/isabelle-proving"},
-    {"name": "isabelle-differential", "source": "extension/skills/isabelle-differential"},
-    {"name": "isabelle-assurance", "source": "extension/skills/isabelle-assurance"}
+    {"name": "isabelle-differential", "source": "extension/skills/isabelle-differential", "kinds": ["code"]},
+    {"name": "isabelle-assurance", "source": "extension/skills/isabelle-assurance", "kinds": ["code"]}
   ],
   "files": [
     {"path": ".claude/agents/ic2-prover.md", "source": "extension/agents/ic2-prover.md", "executable": false},

@@ -158,26 +158,44 @@ cd <worktree>
 
 ## Stating and proving a property
 
-- State a property over the code-level definitions or over a
-  characterization already proved equal to them (`isabelle-modeling`); write
-  the English sentence it stands for in a `text` block right before it.
+- State a property over the model's definitions (in a code-level model,
+  over the code-level definitions or a characterization already proved
+  equal to them, `isabelle-modeling`); write the English sentence it stands
+  for in a `text` block right before it.
 - Before proof effort on a new user-facing property, run `quickcheck` and a
   bounded `nitpick` experiment in a REPL.  A counterexample means the property
-  or its precondition is wrong; fix the statement, never the model.  Do not
-  repeat both tools mechanically for every routine supporting lemma.
+  or its precondition is wrong, or a definition is.  In a code-level model,
+  where the source is the fixed reference, fix the statement, never the
+  model.  Elsewhere, investigate both, and change definitions only within
+  the task's scope.  Do not repeat both tools mechanically for every routine
+  supporting lemma.
   Quickcheck is usually cheap; Nitpick is most useful on structurally small
   finite problems.  Merely having 64- or 128-bit word types does not make its
   search tractable, and refinement statements over unbounded integers are
   often poor Nitpick targets.  Use the two timeout layers described above,
   report an inconclusive timeout, and continue with proof development.
 - Prove on the simplest equal form: unfold the definition with `simp only:
-  f_def Let_def`, split on the result type and the branches, discharge the
-  arithmetic leaves with `sledgehammer`; a word-level goal usually needs the
-  no-wrap fact (`uint`/`sint` bounds and `unat`/`uint` arithmetic lemmas)
-  stated as a `have` first.
+  f_def Let_def`, split on the branches, and discharge the leaves with
+  `sledgehammer`.  In a code-level model, split on the result type too, and
+  a word-level goal usually needs the no-wrap fact (`uint`/`sint` bounds and
+  `unat`/`uint` arithmetic lemmas) stated as a `have` first.
+- Every locale with assumptions, its own or inherited, has a model: a lemma
+  next to the locale proving that concrete parameters satisfy them, such as
+  `lemma child_model: "child 7 3" by unfold_locales simp_all`.  A locale
+  whose assumptions contradict each other makes every theorem in it
+  provable, and neither `quickcheck` nor `nitpick` can notice, because a
+  counterexample must satisfy the assumptions.  A small finite instance is
+  enough, and a model of a locale is a model of every locale it extends.
+  Prefer this lemma about the locale's predicate to a global
+  `interpretation`, which also copies the locale's later theorems into the
+  theory.  While developing, `nitpick [falsify = false]` on the assumptions
+  finds a model or reports that there is none.  A locale still without a
+  model is unfinished work: say so in the report.
 - A finished property has no `sorry`, no `oracle`, no `axiomatization` under
   it, and the session builds without `quick_and_dirty`; `query sorry` under
-  ic2 and the export check confirm this for the exported program.
+  ic2 confirms this, and so does the export check where the project exports
+  a model.  A property stated in a locale is finished only once that locale
+  has its model lemma.
 
 ## Isar pitfalls
 

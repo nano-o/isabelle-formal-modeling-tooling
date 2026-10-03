@@ -11,6 +11,7 @@ SOURCE_REL="."
 SESSION=""
 PROJECT_NAME=""
 MAX_HEAP="12G"
+KIND="code"
 ISABELLE_VERSION="Isabelle2025-2"
 TOOLING_URL="${ISABELLE_TOOLING_URL:-https://github.com/nano-o/isabelle-formal-modeling-tooling}"
 
@@ -22,7 +23,8 @@ The session renderer behind `isabelle-tooling init`; run that instead. Render
 the descriptor and an empty Isabelle session from the templates at COMMIT,
 read with `git show`, never from a working tree, into the empty directory DIR,
 laid out as they go in the checkout. init publishes them with the project
-files, descriptor last.
+files, descriptor last. A code project's templates are templates/ and
+templates/formal/; a theory project's are templates/theory/, except ROOTS.
 
 Options:
   --revision COMMIT   Full commit of the tooling whose templates are rendered
@@ -32,6 +34,7 @@ Options:
   --formal-rel PATH   Formal artifacts directory relative to the checkout (default: formal)
   --source-rel PATH   Code directory relative to the checkout (default: .)
   --max-heap SIZE     ic2 prover memory bound (default: 12G)
+  --kind KIND         code (default) or theory: a project with no implementation
   -h, --help          Show this help
 
 Renders into DIR:
@@ -51,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --source-rel) require_value "$1" "${2:-}"; SOURCE_REL="$2"; shift 2 ;;
     --project-name) require_value "$1" "${2:-}"; PROJECT_NAME="$2"; shift 2 ;;
     --max-heap) require_value "$1" "${2:-}"; MAX_HEAP="$2"; shift 2 ;;
+    --kind) require_value "$1" "${2:-}"; KIND="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
@@ -70,8 +74,17 @@ for value in "$FORMAL_REL" "$SOURCE_REL"; do
   [[ "$value" != *[$'|&\\\n']* ]] || die "paths must not contain |, &, a backslash or a newline: $value"
 done
 heap_to_megabytes "$MAX_HEAP" >/dev/null || die "--max-heap: cannot parse: $MAX_HEAP"
+descriptor_kind_known "$KIND" || die "--kind must be one of: ${DESCRIPTOR_KINDS[*]}"
 git -C "$TOOLING_ROOT" cat-file -e "$REVISION^{commit}" 2>/dev/null ||
   die "$REVISION is not a commit in $TOOLING_ROOT"
+case "$KIND" in
+  code) templates="" ;;
+  theory)
+    templates="theory/"
+    git -C "$TOOLING_ROOT" cat-file -e "$REVISION:templates/theory" 2>/dev/null ||
+      die "$REVISION has no templates/theory/: that revision predates theory projects"
+    ;;
+esac
 
 # render TEMPLATE TARGET: the template at REVISION, placeholders substituted.
 render() {
@@ -92,13 +105,13 @@ render() {
 }
 
 formal="$STAGE/$FORMAL_REL"
-render isabelle-tooling.conf "$STAGE/$DESCRIPTOR_FILE_NAME"
+render "${templates}isabelle-tooling.conf" "$STAGE/$DESCRIPTOR_FILE_NAME"
 render formal/ROOTS "$formal/ROOTS"
-render formal/AGENTS.md "$formal/AGENTS.md"
-render formal/README.md "$formal/README.md"
+render "${templates}formal/AGENTS.md" "$formal/AGENTS.md"
+render "${templates}formal/README.md" "$formal/README.md"
 ln -s AGENTS.md "$formal/CLAUDE.md"
-render formal/ROOT "$formal/$SESSION/ROOT"
-render formal/Session.thy "$formal/$SESSION/$SESSION.thy"
+render "${templates}formal/ROOT" "$formal/$SESSION/ROOT"
+render "${templates}formal/Session.thy" "$formal/$SESSION/$SESSION.thy"
 
 # The generated descriptor must parse; fail here rather than later.
 parse_descriptor "$STAGE/$DESCRIPTOR_FILE_NAME"

@@ -34,6 +34,23 @@ for item in project["files"] + project["json_entries"] + project["toml_blocks"]:
     assert (REPO_ROOT / item["source"]).is_file(), item
 assert (REPO_ROOT / project["markdown_block"]).is_file()
 
+# Project kinds: a theory project gets setup and proving, and only the
+# three skills of the code-level method are for code projects alone.
+assert project["kinds"] == ["code", "theory"], project["kinds"]
+for skill in project["skills"]:
+    assert set(skill.get("kinds", project["kinds"])) <= set(project["kinds"]), skill
+for kind in project["kinds"]:
+    kept = [s["name"] for s in project["skills"] if kind in s.get("kinds", project["kinds"])]
+    assert {"isabelle-setup", "isabelle-proving"} <= set(kept), (kind, kept)
+code_only = sorted(s["name"] for s in project["skills"] if s.get("kinds") == ["code"])
+assert code_only == ["isabelle-assurance", "isabelle-differential", "isabelle-modeling"], code_only
+for item in project["files"] + project["json_entries"] + project["toml_blocks"]:
+    assert "kinds" not in item, item
+# The root block is the same in both kinds, so it names no kind's skills.
+block = (REPO_ROOT / project["markdown_block"]).read_text(encoding="utf-8")
+for name in code_only:
+    assert name not in block, name
+
 # Claude Code: a member of the project's .mcp.json. It expands ${VAR} in
 # `command`, so the entry names the bridge through ISABELLE_TOOLING_ROOT.
 claude_iq = load("extension/project/mcp-iq.json")

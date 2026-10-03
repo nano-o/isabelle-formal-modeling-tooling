@@ -98,6 +98,55 @@ write_descriptor "$bad/badkey" 'Build-Session=x'
 expect_reject badkey "$bad/badkey/$DESCRIPTOR_FILE_NAME" "malformed key"
 expect_reject nofile "$bad/does-not-exist" "descriptor not found"
 
+# model_kind: code or theory, absent meaning code; the differential keys are
+# allowed in either kind.
+kinds="$TEST_TMP_DIR/kinds"
+write_descriptor "$kinds/code" 'model_kind=code'
+parse_descriptor "$kinds/code/$DESCRIPTOR_FILE_NAME"
+[[ "${PROJECT_CONF[model_kind]}" == code ]] || fail "model_kind=code"
+write_descriptor "$kinds/theory" 'model_kind=theory' 'export_name=Test.Iface:code/x.ML' \
+  'model_dispatch=differential/model_dispatch.ML' 'audit_collection=export_audit'
+parse_descriptor "$kinds/theory/$DESCRIPTOR_FILE_NAME"
+[[ "${PROJECT_CONF[model_kind]}" == theory ]] || fail "model_kind=theory"
+parse_descriptor "$valid/$DESCRIPTOR_FILE_NAME"
+[[ "${PROJECT_CONF[model_kind]:-code}" == code && -z "${PROJECT_CONF[model_kind]+set}" ]] ||
+  fail "absent model_kind"
+write_descriptor "$bad/kind" 'model_kind=plain'
+expect_reject kind "$bad/kind/$DESCRIPTOR_FILE_NAME" "unknown model_kind: plain (expected code theory)"
+write_descriptor "$bad/kind-empty" 'model_kind='
+expect_reject kind-empty "$bad/kind-empty/$DESCRIPTOR_FILE_NAME" "unknown model_kind"
+write_descriptor "$bad/kind-case" 'model_kind=Theory'
+expect_reject kind-case "$bad/kind-case/$DESCRIPTOR_FILE_NAME" "unknown model_kind: Theory"
+write_descriptor "$bad/kind-twice" 'model_kind=code' 'model_kind=theory'
+expect_reject kind-twice "$bad/kind-twice/$DESCRIPTOR_FILE_NAME" "duplicate key: model_kind"
+
+# The Python parser behind bin/isabelle-tooling accepts and refuses exactly
+# what this one does, with the same message for a kind.
+python_parse() {
+  python3 -B - "$TEST_DIR/../scripts" "$1" <<'PY_PARSE'
+import sys
+sys.path.insert(0, sys.argv[1])
+import isabelle_tooling
+try:
+    values = isabelle_tooling.parse_descriptor(open(sys.argv[2], encoding='utf-8').read())
+except isabelle_tooling.Refused as exc:
+    print(exc)
+    sys.exit(1)
+print(values.get('model_kind', ''))
+PY_PARSE
+}
+for descriptor in "$valid" "$inject" "$kinds"/* "$bad"/*; do
+  [[ -f "$descriptor/$DESCRIPTOR_FILE_NAME" ]] || continue
+  shell=accepted python=accepted
+  (parse_descriptor "$descriptor/$DESCRIPTOR_FILE_NAME") >/dev/null 2>&1 || shell=refused
+  python_output="$(python_parse "$descriptor/$DESCRIPTOR_FILE_NAME")" || python=refused
+  [[ "$shell" == "$python" ]] ||
+    fail "parsers disagree on ${descriptor##*/}: shell $shell, Python $python ($python_output)"
+done
+[[ "$(python_parse "$kinds/theory/$DESCRIPTOR_FILE_NAME")" == theory ]] || fail "Python: model_kind=theory"
+[[ "$(python_parse "$bad/kind/$DESCRIPTOR_FILE_NAME")" == *"unknown model_kind: plain (expected code theory)" ]] ||
+  fail "Python: the kind message"
+
 # --- resolver ----------------------------------------------------------------
 
 # Layout A/B with a space in the path, resolved by bare invocation from deep

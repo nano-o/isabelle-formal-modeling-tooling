@@ -304,15 +304,30 @@ Python 3.11 or later for `tomllib`.
 that revision installs: the skill names, the wholly managed files with
 their source paths, the JSON entries, and the block templates. The
 synchronizer reads the target revision's manifest, so a revision that adds
-or drops a skill installs or removes it without code changes.
+or drops a skill installs or removes it without code changes. Since theory
+projects, the manifest lists the kinds `["code", "theory"]`, and
+`isabelle-modeling`, `isabelle-differential` and `isabelle-assurance`
+carry `"kinds": ["code"]` (see "Project kinds" in the shared rules).
+
+**Project kinds.** The descriptor's optional `model_kind` is `code` or
+`theory`, and both descriptor parsers refuse any other value. Absent, the
+project is `code`, and `ToolingSpec.kind` returns `None`, so such a project
+installs every skill at any revision, as before kinds. `init --kind
+theory` writes `model_kind=theory` and renders `templates/theory/`
+(`isabelle-tooling.conf`, and `formal/AGENTS.md`, `README.md`, `ROOT` and
+`Session.thy`; `ROOTS` is shared), and refuses a revision without that
+directory; `init` without `--kind` renders exactly what it did before
+kinds. A tooling clone from before kinds stops at the descriptor of a
+theory project with `unknown key: model_kind`, before any change.
 
 **Project files.**
 
 - `isabelle-tooling.conf`, whose `tooling_revision` is the pin.
 - `.isabelle-tooling/inventory.json`.
-- `.agents/skills/isabelle-{setup,modeling,proving,differential,assurance}/`,
-  each copied whole from `extension/skills/` at the pin, with their Claude
-  aliases.
+- `.agents/skills/isabelle-{setup,modeling,proving,differential,assurance}/`
+  in a code project and `.agents/skills/isabelle-{setup,proving}/` in a
+  theory project, each copied whole from `extension/skills/` at the pin,
+  with their Claude aliases.
 - `.claude/agents/ic2-prover.md`, from `extension/agents/ic2-prover.md`.
 - `.codex/agents/ic2_prover.toml`, from `extension/agents/ic2_prover.toml`.
 - In `.mcp.json`, the member `/mcpServers/iq`:
@@ -340,19 +355,19 @@ or drops a skill installs or removes it without code changes.
   ```
 
 - The `isabelle-tooling` block in the root instruction files, with
-  `FORMAL_REL` substituted from the descriptor:
+  `FORMAL_REL` substituted from the descriptor. It is the same in both
+  kinds, and names no skill but setup, so that a runtime from before kinds
+  can still install it:
 
   ```markdown
   <!-- BEGIN isabelle-tooling -->
   <!-- Managed by isabelle-tooling; change it with `isabelle-tooling update`. -->
   ## Isabelle formal model
 
-  This repository has an Isabelle model under `FORMAL_REL/`; read
-  `FORMAL_REL/AGENTS.md` before working on it. The workflow is in the
-  `isabelle-setup`, `isabelle-modeling`, `isabelle-proving`,
-  `isabelle-differential` and `isabelle-assurance` skills. Start with
-  `isabelle-setup` until `"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling"
-  doctor` passes.
+  This repository has Isabelle theories under `FORMAL_REL/`; read
+  `FORMAL_REL/AGENTS.md` before working on them. The workflow is in the
+  `isabelle-*` skills; start with `isabelle-setup` until
+  `"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" doctor` passes.
   <!-- END isabelle-tooling -->
   ```
 

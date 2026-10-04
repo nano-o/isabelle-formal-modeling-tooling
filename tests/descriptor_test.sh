@@ -120,32 +120,77 @@ expect_reject kind-case "$bad/kind-case/$DESCRIPTOR_FILE_NAME" "unknown model_ki
 write_descriptor "$bad/kind-twice" 'model_kind=code' 'model_kind=theory'
 expect_reject kind-twice "$bad/kind-twice/$DESCRIPTOR_FILE_NAME" "duplicate key: model_kind"
 
+# Lines end at LF alone and blank means spaces and tabs; a carriage return or
+# a NUL byte is refused. Any other separator Python knows is part of a value.
+odd="$TEST_TMP_DIR/odd"
+mkdir -p "$odd/crlf"
+sed 's/$/\r/' "$valid/$DESCRIPTOR_FILE_NAME" >"$odd/crlf/$DESCRIPTOR_FILE_NAME"
+expect_reject crlf "$odd/crlf/$DESCRIPTOR_FILE_NAME" ":1: carriage return (the descriptor must have LF line endings)"
+write_descriptor "$odd/crlf-kind" $'model_kind=theory\r'
+expect_reject crlf-kind "$odd/crlf-kind/$DESCRIPTOR_FILE_NAME" ":9: carriage return"
+write_descriptor "$odd/cr" $'export_name=x\rmodel_kind=theory'
+expect_reject cr "$odd/cr/$DESCRIPTOR_FILE_NAME" ":9: carriage return"
+for case in kind value; do
+  mkdir -p "$odd/nul-$case"
+  { cat "$valid/$DESCRIPTOR_FILE_NAME"; [[ "$case" == kind ]] && printf 'model_kind=the\0ory\n' ||
+    printf '# a comment\0\n'; } >"$odd/nul-$case/$DESCRIPTOR_FILE_NAME"
+  expect_reject "nul-$case" "$odd/nul-$case/$DESCRIPTOR_FILE_NAME" "contains a NUL byte"
+done
+separators=$'\v\f\x1c\x1d\x1e\xc2\x85\xe2\x80\xa8\xe2\x80\xa9'
+write_descriptor "$odd/separators" "model_dispatch=x${separators}model_kind=theory" $'\t# indented comment' ' '
+parse_descriptor "$odd/separators/$DESCRIPTOR_FILE_NAME"
+[[ "${PROJECT_CONF[model_dispatch]}" == "x${separators}model_kind=theory" && -z "${PROJECT_CONF[model_kind]+set}" ]] ||
+  fail "separators: a value runs to the LF"
+write_descriptor "$odd/formfeed-line" $'\f'
+expect_reject formfeed-line "$odd/formfeed-line/$DESCRIPTOR_FILE_NAME" ":9: expected key=value"
+write_descriptor "$odd/nbsp-line" $'\xc2\xa0'
+expect_reject nbsp-line "$odd/nbsp-line/$DESCRIPTOR_FILE_NAME" ":9: expected key=value"
+mkdir -p "$odd/glob"
+sed 's|^formal_rel=formal$|formal_rel=.*|' "$valid/$DESCRIPTOR_FILE_NAME" >"$odd/glob/$DESCRIPTOR_FILE_NAME"
+(shopt -u globskipdots 2>/dev/null || true; parse_descriptor "$odd/glob/$DESCRIPTOR_FILE_NAME" &&
+  [[ "${PROJECT_CONF[formal_rel]}" == '.*' ]]) || fail "glob: a path value is not a pattern"
+
 # The Python parser behind bin/isabelle-tooling accepts and refuses exactly
-# what this one does, with the same message for a kind.
+# what this one does, reads the same values, and gives the same message for a
+# kind. Bash before 5.2 lets a glob match `..`; the shell side runs that way.
+shell_parse() {
+  (
+    shopt -u globskipdots 2>/dev/null || true
+    parse_descriptor "$1" >/dev/null 2>&1 || exit 1
+    for key in "${!PROJECT_CONF[@]}"; do
+      printf '%s=%s\n' "$key" "${PROJECT_CONF[$key]}"
+    done | LC_ALL=C sort
+  )
+}
 python_parse() {
   python3 -B - "$TEST_DIR/../scripts" "$1" <<'PY_PARSE'
 import sys
+from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import isabelle_tooling
 try:
-    values = isabelle_tooling.parse_descriptor(open(sys.argv[2], encoding='utf-8').read())
+    values = isabelle_tooling.parse_descriptor(Path(sys.argv[2]).read_bytes().decode('utf-8'))
 except isabelle_tooling.Refused as exc:
     print(exc)
     sys.exit(1)
-print(values.get('model_kind', ''))
+print('\n'.join(f'{key}={value}' for key, value in sorted(values.items())))
 PY_PARSE
 }
-for descriptor in "$valid" "$inject" "$kinds"/* "$bad"/*; do
+for descriptor in "$valid" "$inject" "$kinds"/* "$bad"/* "$odd"/*; do
   [[ -f "$descriptor/$DESCRIPTOR_FILE_NAME" ]] || continue
-  shell=accepted python=accepted
-  (parse_descriptor "$descriptor/$DESCRIPTOR_FILE_NAME") >/dev/null 2>&1 || shell=refused
-  python_output="$(python_parse "$descriptor/$DESCRIPTOR_FILE_NAME")" || python=refused
-  [[ "$shell" == "$python" ]] ||
-    fail "parsers disagree on ${descriptor##*/}: shell $shell, Python $python ($python_output)"
+  shell="$(shell_parse "$descriptor/$DESCRIPTOR_FILE_NAME")" || shell=refused
+  python="$(python_parse "$descriptor/$DESCRIPTOR_FILE_NAME")" || python="refused ($python)"
+  [[ "$shell" == "${python%% (*}" || ( "$shell" != refused && "$shell" == "$python" ) ]] ||
+    fail "parsers disagree on ${descriptor##*/}: shell ${shell@Q}, Python ${python@Q}"
 done
-[[ "$(python_parse "$kinds/theory/$DESCRIPTOR_FILE_NAME")" == theory ]] || fail "Python: model_kind=theory"
+[[ "$(python_parse "$kinds/theory/$DESCRIPTOR_FILE_NAME")" == *$'\nmodel_kind=theory\n'* ]] ||
+  fail "Python: model_kind=theory"
 [[ "$(python_parse "$bad/kind/$DESCRIPTOR_FILE_NAME")" == *"unknown model_kind: plain (expected code theory)" ]] ||
   fail "Python: the kind message"
+[[ "$(python_parse "$odd/crlf/$DESCRIPTOR_FILE_NAME")" == \
+  *":1: carriage return (the descriptor must have LF line endings)" ]] || fail "Python: the carriage return message"
+[[ "$(python_parse "$odd/nul-kind/$DESCRIPTOR_FILE_NAME")" == *"contains a NUL byte" ]] ||
+  fail "Python: the NUL message"
 
 # --- resolver ----------------------------------------------------------------
 

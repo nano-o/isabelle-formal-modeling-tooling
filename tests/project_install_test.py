@@ -263,6 +263,8 @@ class ToolingTests(unittest.TestCase):
     def test_skills_refuse_a_malformed_descriptor_or_missing_object(self):
         (self.project / 'isabelle-tooling.conf').write_text('format_version=1\nnot a line\n')
         self.assertIn('expected key=value', self.it('skills', 'list', code=1).err)
+        (self.project / 'isabelle-tooling.conf').write_bytes(b'format_version=1\r\n')
+        self.assertIn('isabelle-tooling.conf:1: carriage return', self.it('skills', 'list', code=1).err)
         descriptor = self.blob(self.rev1, 'templates/isabelle-tooling.conf').decode()
         for key, value in dict(SOURCE_REL='.', FORMAL_REL='formal', SESSION='Demo', MAX_HEAP='2G',
                                ISABELLE_VERSION='Isabelle2025-2', TOOLING_REVISION='0' * 40).items():
@@ -405,14 +407,15 @@ class ToolingTests(unittest.TestCase):
         root = root or self.project
         return tuple(sorted(os.listdir(root / '.agents/skills'))), tuple(sorted(os.listdir(root / '.claude/skills')))
 
-    def set_kind(self, kind):
+    def set_kind(self, kind, root=None):
         """Edit the descriptor's model_kind as a user would; None removes it."""
-        lines = [line for line in self.read('isabelle-tooling.conf').splitlines(keepends=True)
+        descriptor = (root or self.project) / 'isabelle-tooling.conf'
+        lines = [line for line in descriptor.read_text().splitlines(keepends=True)
                  if not line.startswith('model_kind=')]
         if kind:
             at = next(i for i, line in enumerate(lines) if line.startswith('format_version=')) + 1
             lines.insert(at, f'model_kind={kind}\n')
-        (self.project / 'isabelle-tooling.conf').write_text(''.join(lines))
+        descriptor.write_text(''.join(lines))
 
     def test_theory_init_installs_setup_and_proving_only(self):
         self.it('init', '--session', 'Notes', '--kind', 'theory')
@@ -464,6 +467,19 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('--kind', self.it('init', '--session', 'X', '--kind', 'other', code=2).err)
         self.set_kind('plain')
         self.assertIn('unknown model_kind: plain', self.it('sync', code=1).err)
+
+    def test_a_descriptor_with_crlf_line_endings_is_refused(self):
+        self.it('init', '--session', 'Demo')
+        self.commit_all()
+        descriptor = self.project / 'isabelle-tooling.conf'
+        descriptor.write_bytes(descriptor.read_bytes().replace(b'\n', b'\r\n'))
+        before = snapshot(self.project)
+        for args in (('sync', '--check'), ('sync',), ('update', 'stable'), ('skills', 'list')):
+            result = self.it(*args, code=1)
+            self.assertIn('isabelle-tooling.conf:1: carriage return (the descriptor must have LF line endings)',
+                          result.out + result.err)
+        self.assertIn('isabelle-tooling.conf:1: carriage return', self.doctor())
+        self.assertEqual(snapshot(self.project), before)
 
     def test_theory_link_mode_and_shared_alias(self):
         self.it('init', '--session', 'Notes', '--kind', 'theory')
@@ -539,6 +555,54 @@ class ToolingTests(unittest.TestCase):
         self.assertEqual(self.skill_dirs(), (('agent-coordination',) + tuple(sorted(SKILLS)),) * 2)
         self.check()
 
+    def test_switching_kinds_through_update(self):
+        self.it('init', '--session', 'Demo')
+        self.commit_all()
+        # Code to theory and stable to next in one update, which writes the descriptor and so needs it staged.
+        self.set_kind('theory')
+        self.assertIn('isabelle-tooling.conf has unstaged changes', self.it('update', 'next', code=1).err)
+        self.git('add', 'isabelle-tooling.conf')
+        self.git_in(self.runtime, 'checkout', '-q', 'next')
+        out = self.it('update', 'next').out
+        for name in CODE_ONLY:
+            self.assertIn(f'.agents/skills/{name}/SKILL.md', out)
+            self.assertIn(f'.claude/skills/{name}', out)
+        self.assertEqual(self.skill_dirs(), (THEORY_SKILLS, THEORY_SKILLS))
+        self.assertTrue((self.project / '.claude/skills/isabelle-proving/references/next-only.md').is_file())
+        self.assertIn(f'tooling_revision={self.rev2}\n', self.read('isabelle-tooling.conf'))
+        self.assertIn('model_kind=theory\n', self.read('isabelle-tooling.conf'))
+        self.check()
+        self.commit_all()
+        # And back to code at stable.
+        self.set_kind(None)
+        self.git('add', 'isabelle-tooling.conf')
+        self.git_in(self.runtime, 'checkout', '-q', 'main')
+        self.it('update', 'stable')
+        self.assertEqual(self.skill_dirs(), (tuple(sorted(SKILLS)),) * 2)
+        self.assertFalse((self.project / '.agents/skills/isabelle-proving/references').exists())
+        self.check()
+
+    def test_switching_kinds_in_link_mode(self):
+        self.it('init', '--session', 'Demo')
+        self.commit_all()
+        before = snapshot(self.project)
+        dev = self.work / 'dev'
+        self.git_in(self.runtime, 'worktree', 'add', '-q', '--detach', str(dev), 'HEAD')
+        self.addCleanup(self.git_in, self.runtime, 'worktree', 'remove', '--force', str(dev))
+        # Each way linked, then back to copies, staged before the next switch as in copy mode.
+        for kind, names in (('theory', THEORY_SKILLS), (None, tuple(sorted(SKILLS)))):
+            self.set_kind(kind)
+            self.it('sync', '--link', '--source', str(dev))
+            links = {name: os.readlink(self.project / '.agents/skills' / name)
+                     for name in os.listdir(self.project / '.agents/skills')}
+            self.assertEqual(links, {name: f'{os.path.realpath(dev)}/extension/skills/{name}' for name in names})
+            self.assertEqual(self.skill_dirs(), (names, names))
+            self.it('sync')
+            self.check()
+            self.git('add', '-A')
+        self.assertEqual({rel: entry[:3] for rel, entry in snapshot(self.project).items()},
+                         {rel: entry[:3] for rel, entry in before.items()})
+
     def test_an_edited_code_only_skill_blocks_the_switch_to_theory(self):
         self.it('init', '--session', 'Demo')
         self.commit_all()
@@ -571,6 +635,14 @@ class ToolingTests(unittest.TestCase):
         self.git('add', '-A', cwd=other)
         self.it('update', 'stable', cwd=other)
         self.git('add', '-A', cwd=other)
+        # An explicit model_kind=code ties it to revisions with kinds.
+        self.set_kind('code', other)
+        before = snapshot(other)
+        err = self.it('update', 'before-kinds', cwd=other, code=1).err
+        self.assertIn(f'this project is of kind code, which isabelle-tooling {self.rev0} does not support '
+                      '(it predates project kinds)', err)
+        self.assertEqual(snapshot(other), before)
+        self.set_kind(None, other)
         self.it('update', 'before-kinds', cwd=other)
         self.assertIn(f'tooling_revision={self.rev0}\n', (other / 'isabelle-tooling.conf').read_text())
 
@@ -875,6 +947,37 @@ class KindTests(unittest.TestCase):
             for hook, values in ((True, {'kind': 'x'}), (True, {}), (False, {})):
                 with self.subTest(case=case, hook=hook, values=values), self.assertRaises(self.pf.Broken):
                     self.skills(revision, values, hook=hook)
+
+
+class KeyValueTests(unittest.TestCase):
+    """The shared descriptor format, read as a shell `read` loop reads it: lines end at LF alone.
+
+    agent-board's suite has the same tests."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(MODULE_DIR))
+        sys.dont_write_bytecode = True
+        import project_files
+        cls.pf = project_files
+
+    def test_lines_end_at_lf_alone(self):
+        separators = '\v\f\x1c\x1d\x1e\x85\u2028\u2029'
+        self.assertEqual(self.pf.parse_key_values(f'# c\n\t# indented\n \t\na=1{separators}b=2\nc=3', 'x.conf'),
+                         {'a': f'1{separators}b=2', 'c': '3'})
+        for text, says in (('a=1\r\n', 'x.conf:1: carriage return (the descriptor must have LF line endings)'),
+                           ('a=1\nb=2\rc=3\n', 'x.conf:2: carriage return'),
+                           ('a=1\n# \0\n', 'x.conf: contains a NUL byte'),
+                           ('\f\n', 'x.conf:1: expected key=value'), ('\xa0\n', 'x.conf:1: expected key=value')):
+            with self.subTest(text=text), self.assertRaises(self.pf.Refused) as caught:
+                self.pf.parse_key_values(text, 'x.conf')
+            self.assertIn(says, str(caught.exception))
+
+    def test_set_key_changes_only_its_line(self):
+        text = 'a=1\x1cb=2\n# key=0\nkey=old\x85x\nz=9'
+        self.assertEqual(self.pf.set_key(text, 'key', 'new'), 'a=1\x1cb=2\n# key=0\nkey=new\nz=9')
+        self.assertEqual(self.pf.set_key(text, 'a', '5'), 'a=5\n# key=0\nkey=old\x85x\nz=9')
+        self.assertEqual(self.pf.set_key('a=1', 'b', '2'), 'a=1\nb=2\n')
 
 
 if __name__ == '__main__':

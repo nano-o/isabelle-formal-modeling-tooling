@@ -64,12 +64,13 @@ hash_files() {
 #
 # A checkout that uses this tooling carries one committed file at its root,
 # isabelle-tooling.conf, in a deliberately small key=value format: UTF-8, one
-# key per line, full-line # comments, the value is everything after the first
-# `=`. It is data, never sourced or passed to eval. Two relative roots make the
-# layout configuration rather than architecture: source_rel is where the code
-# under study lives and formal_rel is where the Isabelle session lives, both
-# relative to the checkout root. model_kind is code (the default when absent)
-# or theory, for a project with no implementation to model.
+# key per line with LF line endings, full-line # comments, the value is
+# everything after the first `=`. It is data, never sourced or passed to eval.
+# Two relative roots make the layout configuration rather than architecture:
+# source_rel is where the code under study lives and formal_rel is where the
+# Isabelle session lives, both relative to the checkout root. model_kind is
+# code (the default when absent) or theory, for a project with no
+# implementation to model.
 
 DESCRIPTOR_FILE_NAME="isabelle-tooling.conf"
 DESCRIPTOR_REQUIRED_KEYS=(
@@ -127,20 +128,26 @@ check_descriptor_path() {
   local key="$2"
   local value="$3"
   local component
+  local -a components
   [[ "$value" != /* ]] || die "$file: $key must be relative to the checkout root, found absolute path: $value"
   [[ -n "$value" ]] || die "$file: $key must not be empty"
-  local IFS='/'
-  for component in $value; do
+  # Split without pathname expansion, which could turn `.*` into `..`.
+  IFS='/' read -r -a components <<<"$value"
+  for component in "${components[@]}"; do
     [[ "$component" != ".." ]] || die "$file: $key must not contain a '..' component: $value"
   done
 }
 
 # parse_descriptor FILE: fill PROJECT_CONF from FILE, rejecting malformed
 # lines, unknown or duplicate keys, missing required keys, an unsupported
-# format_version, and path values that escape the checkout root.
+# format_version, and path values that escape the checkout root. Lines end at
+# LF alone and blank means spaces and tabs, as in project_files.py's
+# parse_key_values; a carriage return or a NUL byte is refused, since `read`
+# would keep the one and drop the other.
 parse_descriptor() {
   local file="$1"
   local line key value line_number=0
+  local skip=$'^[ \t]*(#.*)?$'
   PROJECT_CONF=()
 
   [[ -f "$file" ]] || die "descriptor not found: $file"
@@ -148,10 +155,14 @@ parse_descriptor() {
     iconv -f UTF-8 -t UTF-8 <"$file" >/dev/null 2>&1 ||
       die "$file: not valid UTF-8"
   fi
+  [[ "$(LC_ALL=C tr -dc '\000' <"$file" | wc -c)" -eq 0 ]] ||
+    die "$file: contains a NUL byte"
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     line_number=$((line_number + 1))
-    [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+    [[ "$line" != *$'\r'* ]] ||
+      die "$file:$line_number: carriage return (the descriptor must have LF line endings)"
+    [[ "$line" =~ $skip ]] && continue
     [[ "$line" == *=* ]] ||
       die "$file:$line_number: expected key=value, found: $line"
     key="${line%%=*}"

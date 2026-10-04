@@ -247,11 +247,12 @@ it would duplicate the project's files.
 
 A project checkout carries one committed file at its root,
 `isabelle-tooling.conf`. It is data in a small `key=value` format — UTF-8, one
-key per line, full-line `#` comments, the value is everything after the first
-`=` — never sourced or passed to `eval`. The parser rejects duplicate keys,
-unknown keys, missing required keys, an unsupported `format_version`, a
-`model_kind` other than `code` or `theory`, absolute path values, and any
-`..` component.
+key per line with LF line endings, full-line `#` comments, the value is
+everything after the first `=` — never sourced or passed to `eval`. The
+parser rejects duplicate keys, unknown keys, missing required keys, an
+unsupported `format_version`, a `model_kind` other than `code` or `theory`,
+absolute path values, any `..` component, and a carriage return or NUL byte
+anywhere, so a descriptor saved with CRLF line endings is refused.
 
 ```ini
 format_version=1

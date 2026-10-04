@@ -96,7 +96,7 @@ def skill_revision(spec, project_root):
         descriptor = nearest_descriptor(os.getcwd())
     if descriptor is None:
         return spec.runtime.commit('stable'), 'stable', None
-    values = parse_descriptor(descriptor.read_text(), str(descriptor))
+    values = parse_descriptor(descriptor.read_bytes().decode('utf-8'), str(descriptor))
     revision = values.get('tooling_revision', '')
     if not project_files.FULL_REVISION.fullmatch(revision):
         raise Refused(f'{descriptor}: tooling_revision must be a full 40-hex commit, found {revision!r}')

@@ -174,3 +174,68 @@ Not rerun
 : The behavioural scenarios, link mode and the worker smoke proof: only
   `LICENSE`, `NOTICE`, the README and the docs changed, and no skill,
   instruction block, worker profile, script or link code.
+
+## 2026-10-03: theory projects
+
+Candidates
+: isabelle-formal-modeling-tooling `abd12cd`, this commit's parent: a
+  project kind `theory` for projects with no implementation to model
+  (`init --kind theory`, `model_kind` in the descriptor,
+  `templates/theory/`, skills selected by the manifest's `kinds`), a root
+  instruction block that names no kind's skills, and a rule in
+  `isabelle-proving` that every locale with assumptions has a proved
+  model. The fixtures ran at `dcb7809`, which differs from it only in
+  the plan's History. AutoCorrode `dbd474f`, as before.
+: agent-board `aaba6dd`, the validation record of `3b2ba94`, whose shared
+  module has the same project kinds.
+
+Hosts
+: Claude Code 2.1.289 with claude-opus-5-5, in auto permission mode.
+: Codex CLI 0.160.0 with gpt-6-astra at medium reasoning effort, in the
+  workspace-write sandbox with automatic review.
+: Isabelle2025-2, Git 2.43, Python 3.12.3, on Linux.
+
+Setup
+: As in the previous record, with the board checkout under test named by
+  `AGENT_BOARD_ROOT`. The previous `stable`, `f013ec6`, served as the
+  older runtime by moving the runtime worktree to it.
+: A new fixture: a fresh `git init` repository with `init --kind theory`
+  at the candidate, once per host.
+
+Passed
+: `make validate` and `make check-isabelle`, which now builds both
+  templates' sessions and a theory session importing
+  `HOL-Library.FSet`.
+: Between real revisions, 39 checks: the previous runtime updated a code
+  project to the candidate (five skills, the new block, no
+  `model_kind`); from the candidate, a code project moved back and a
+  theory project was refused, unchanged; `init --revision f013ec6`
+  rendered a code project byte-identical, pin aside, to one at the
+  candidate, and refused `--kind theory`; the previous runtime stopped
+  with `unknown key: model_kind` in `sync --check`, `sync`, `update`,
+  doctor and `scripts/ic2.sh start` on the theory project, changing
+  nothing.
+: Installers, doctors and the command interface: 76 checks on the bare
+  repository and 75 on the stellar-core clone, all but the check of
+  `init` at the previous `stable`, whose doctors fail while the runtimes
+  are at the candidates.
+: The shared module is byte-identical in both repositories.
+: On both hosts, in the theory fixture: discovery of exactly the two
+  project skills and the worker profile; a recursive function and a
+  lemma through ic2, with no conventions block, no `Word` import and no
+  code-level skill read; and, asked for a locale with assumptions, a
+  model lemma for it added unprompted. Doctor passed and the session
+  built.
+
+Not rerun
+: The behavioural scenarios, link mode on a host and the worker smoke
+  proof: the worker profiles, the board skill and the link code did not
+  change. The instruction block and the setup and proving skills did, and
+  the theory fixture exercised them on both hosts.
+
+Observations
+: Codex lists no MCP server in discovery while no jEdit serves I/Q, as in
+  earlier runs; the project's `.codex/config.toml` carries the `iq`
+  block.
+: Until `stable` moves, `init --kind theory` without `--revision` is
+  refused, naming the missing `templates/theory/` at `stable`.

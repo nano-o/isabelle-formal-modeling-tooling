@@ -2,7 +2,9 @@
 
 Proposed on 2026-10-01 and reviewed by Codex (`gpt-6-astra`, xhigh effort)
 the same day; revised on 2026-10-03 after a review against the code at
-`stable`. History has both reviews. Not started.
+`stable`. History has both reviews. Stages A to C done on 2026-10-03
+(History, "Implementation" and "Validation"); stage D's adoption is
+recorded outside this repository.
 
 The occasion is a paper repository that is starting an Isabelle model of a
 protocol and has no implementation to model. `isabelle-tooling init` there
@@ -611,3 +613,74 @@ built on Isabelle2025-2 confirmed the mechanics:
   none of contradictory ones.
 
 A theorem's own premises outside any locale are not covered by the rule.
+
+**Implementation**, 2026-10-03, at the user's request, in the order of
+work: stage A as tooling `6e4050e` and agent-board `3b2ba94`, stage B as
+`dcb7809`. The plan's two commits were squashed into one first, so the
+branch history names no private project. Details settled on the way:
+
+- A project kind the target revision does not support is a refusal (exit
+  1, the message names the kind and the revision, and says when the
+  revision predates kinds); malformed `kinds` in a manifest, or `kinds` on
+  an entry other than a skill, is a broken manifest (exit 2), whether or
+  not the project names a kind.
+- The shared rules gained a generic "Project kinds" paragraph, and their
+  "Descriptors" now says only that `isabelle-tooling.conf` has the keys the
+  tooling defines. `model_kind` itself is described in the tooling's own
+  part of the contracts, so agent-board's copy changed only in stage A.
+- `skills list` prints `NAME [code, theory]: DESCRIPTION`, adds `; not
+  installed here` in a project whose kind leaves a skill out, and ends its
+  header with `, for a theory project`; a revision without kinds prints
+  as before. Doctor's roots line starts `A theory project;`.
+- The theory descriptor template carries a comment on `model_kind`; the
+  code templates are unchanged, byte for byte.
+- The descriptor tests went into `tests/descriptor_test.sh`, which tests
+  `common.sh`'s parser, including a loop that runs both parsers on every
+  descriptor of the test; `tests/common_test.sh` tests other helpers and
+  is unchanged.
+- The migrations and "Replacing an uncommitted code scaffold" are
+  documented in the README's new "Project kinds" section, which the setup
+  skill points to.
+- `init --kind theory` without `--revision` pins `stable`, so it fails,
+  naming the missing `templates/theory/`, until `stable` has moved.
+
+
+**Validation**, the same day, at tooling `dcb7809` and agent-board
+`3b2ba94`, in the fixture environment of the delivery plan's step 4 (a
+detached runtime worktree with its own Isabelle user home, fresh host
+configuration roots), with Claude Code 2.1.289 (claude-opus-5-5, auto
+permission mode) and Codex CLI 0.160.0 (gpt-6-astra at medium effort,
+workspace-write with automatic review). Everything passed:
+
+- Between real revisions, 39 checks with the previous `stable` `f013ec6`.
+  Its runtime updated a code project to the candidate: five skills, the
+  new block, no `model_kind`, and doctor passed once the clone moved. From
+  the candidate runtime, a code project moved back to `f013ec6`, a theory
+  project's `update f013ec6` was refused naming the kind and the revision
+  and changed nothing, `init --revision f013ec6` rendered a code project,
+  and `init --kind theory --revision f013ec6` was refused. A code render at
+  the candidate is byte-identical to one at `f013ec6`, the pin aside. With
+  the runtime back at `f013ec6`, `sync --check`, `sync`, `update`, doctor
+  and `scripts/ic2.sh start` on the theory project each stopped with
+  `unknown key: model_kind`, and the project was unchanged.
+- The mechanical checks: 76 on the bare repository and 75 on the
+  stellar-core clone, all but the check of `init` at the previous
+  `stable`, whose doctors fail while the runtimes are at the candidates.
+- The shared module is byte-identical at both candidates.
+- The theory host fixture, a fresh repository with `init --kind theory`,
+  on both hosts. Discovery showed exactly the two project skills and the
+  worker profile; Claude Code listed the `iq` server (not connected, with
+  no jEdit running), and Codex, as in earlier discovery runs, listed no
+  MCP server without a live I/Q. Asked for a recursive function and a
+  lemma about it through ic2, each agent read only `isabelle-setup` and
+  `isabelle-proving`, wrote no conventions block and no `Word` import,
+  built the session and committed. Asked, in a fresh session, for a
+  locale with two assumptions and a lemma in it, each added
+  `lemma bounded_queue_model: "bounded_queue 1 0" by unfold_locales
+  simp_all` unprompted, and Claude Code named the new rule in its report.
+  Doctor passed and the session built in both projects afterwards.
+
+Not rerun: the behavioural scenarios, link mode on a host and the worker
+smoke proof. The worker profiles, the board skill and the link code did
+not change; the instruction block and the setup and proving skills did,
+and the theory host fixture exercised them on both hosts.

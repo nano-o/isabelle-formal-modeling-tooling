@@ -4,7 +4,8 @@ Proposed on 2026-10-01 and reviewed by Codex (`gpt-6-astra`, xhigh effort)
 the same day; revised on 2026-10-03 after a review against the code at
 `stable`. History has both reviews. Stages A to C done on 2026-10-03
 (History, "Implementation" and "Validation"); stage D's adoption is
-recorded outside this repository.
+recorded outside this repository. The implementation was reviewed on
+2026-10-04 (History, "Review of the implementation").
 
 The occasion is a paper repository that is starting an Isabelle model of a
 protocol and has no implementation to model. `isabelle-tooling init` there
@@ -684,3 +685,41 @@ Not rerun: the behavioural scenarios, link mode on a host and the worker
 smoke proof. The worker profiles, the board skill and the link code did
 not change; the instruction block and the setup and proving skills did,
 and the theory host fixture exercised them on both hosts.
+
+**Review of the implementation** by Codex (`gpt-6.1-sol`, xhigh effort,
+read-only), on 2026-10-04, of tooling `f013ec6..b32ab71`, agent-board
+`d0c73a9..aaba6dd` and the paper repository's adoption. No high-severity
+finding. It confirmed the byte-identical module and shared rules, the old
+runtime's five skills for code projects and its refusal of theory
+projects, the refusal of explicit kinds at revisions before kinds, the
+removals in a switch of kinds, the unchanged code templates, and that
+the paper repository's `sync --check` passes. One medium finding and three
+untested cases, all fixed in `84f0ffc` and agent-board `8378248`:
+
+1. (Medium) The two descriptor parsers disagreed on unusual input:
+   Python's `splitlines()` also broke lines at a carriage return, form
+   feed and other separators, and `read_text()` turned CRLF into LF, while
+   the shell's `read` kept a carriage return and dropped a NUL byte. A
+   CRLF descriptor passed `sync` and failed doctor, and a lone carriage
+   return gave Python a `model_kind=theory` line the shell never saw. The
+   disagreement predates kinds, for every key. While fixing it, two more
+   turned up: blank lines meant Unicode whitespace to Python and the
+   locale's to the shell, and the shell's `..` check expanded path values
+   as globs, so before bash 5.2 `.*` matched `..`. Both parsers now split
+   at LF alone, take only spaces and tabs as blank, and refuse a carriage
+   return or a NUL byte by name; the shell splits paths without pathname
+   expansion. The shared rules say so. The descriptor test now compares
+   the values both parsers read, and fails against the old parsers.
+2. Untested: a switch of kinds through `update`. It works, and needs the
+   edited descriptor staged first, since `update` writes it.
+3. Untested: a switch in link mode. It works each way. Switching straight
+   back without staging is refused, as in copy mode, because the first
+   switch's removals are unstaged.
+4. Untested: an explicit `model_kind=code` at a revision before kinds. It
+   is refused, as the README says, and accepted once the line is removed.
+
+Validation at `84f0ffc` and agent-board `8378248`: `make validate` in both
+repositories, and the mechanical checks, 76 on the bare repository and 75
+on the stellar-core clone, all but the check of `init` at the previous
+`stable`, whose doctors fail while the runtimes are at the candidates. No
+host session ran: no skill, block, profile or template changed.

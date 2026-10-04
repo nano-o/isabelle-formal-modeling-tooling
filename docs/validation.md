@@ -239,3 +239,48 @@ Observations
   block.
 : Until `stable` moves, `init --kind theory` without `--revision` is
   refused, naming the missing `templates/theory/` at `stable`.
+
+## 2026-10-04: descriptors read the same in Python and the shell
+
+Candidates
+: isabelle-formal-modeling-tooling `6dc3820`, this commit's parent: both
+  descriptor parsers split lines at LF alone, take only spaces and tabs as
+  blank, and refuse a carriage return or a NUL byte by name, and the
+  shell's `..` check no longer expands path values as globs. A Codex
+  review of the theory projects found the disagreement; the theory plan's
+  History has the review. The fixtures ran at `84f0ffc`, which differs
+  from it only in that History. AutoCorrode `dbd474f`, as before.
+: agent-board `b215a93`, the validation record of `8378248`, whose shared
+  module has the same parser.
+
+Hosts
+: None: no host session ran, because nothing a host loads changed.
+: Isabelle2025-2, Git 2.43, Python 3.12.3, on Linux.
+
+Setup
+: As in the previous record, with the board checkout under test named by
+  `AGENT_BOARD_ROOT`.
+
+Passed
+: `make validate`, including descriptors with CRLF line ends, a lone
+  carriage return, NUL bytes, other separators inside a value, lines of a
+  form feed or a no-break space, and a glob path value, each read the
+  same, values included, by both parsers; and install tests of a CRLF
+  descriptor in every verb and doctor, of switching kinds through
+  `update` and in link mode, and of an explicit `model_kind=code` at a
+  revision from before kinds.
+: Installers, doctors and the command interface: 76 checks on the bare
+  repository and 75 on the stellar-core clone, all but the check of
+  `init` at the previous `stable`, whose doctors fail while the runtimes
+  are at the candidates.
+: The shared module is byte-identical in both repositories.
+
+Not rerun
+: The behavioural scenarios, link mode on a host, the worker smoke proof
+  and `make check-isabelle`: no skill, instruction block, worker profile,
+  template or theory changed.
+
+Observations
+: A descriptor saved with CRLF line endings used to pass `sync` and fail
+  doctor with `unsupported format_version: 1`; now every verb and doctor
+  refuse it, naming the carriage return.

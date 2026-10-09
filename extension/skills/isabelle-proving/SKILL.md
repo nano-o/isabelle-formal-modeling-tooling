@@ -1,6 +1,6 @@
 ---
 name: isabelle-proving
-description: Editing Isabelle theories and developing proofs with this tooling — the two workflows (Isabelle/IQ in the main jEdit worktree, or a native ic2 server in a dedicated Git worktree), the check-locates / REPL-iterates loop, the command timeout, prover-death recovery, and the Isar and I/R pitfalls that cost agents hours. Use whenever a task touches a .thy file, a proof, a sorry, or an Isabelle error.
+description: Editing Isabelle theories and developing proofs with this tooling — the two workflows (Isabelle/IQ in the main jEdit worktree, or a native ic2 server in a dedicated Git worktree), the check-locates / REPL-iterates loop, the command timeout, prover-death recovery, searching and closing goals (try0, sledgehammer, find_theorems, find_consts), writing abstract definitions and statements, and the Isar and I/R pitfalls that cost agents hours. Use whenever a task touches a .thy file, a proof, a sorry, or an Isabelle error.
 ---
 
 # Proving with Isabelle through this tooling
@@ -126,9 +126,9 @@ cd <worktree>
 - No proof method with complex facts or arguments you have guessed before
   trying sledgehammer: `by (metis <hand-picked>)`, `by (rule foo [OF bar, of
   ...])`, `by (simp add: <unconfirmed lemmas>)`. Reproduce the step in a REPL,
-  run sledgehammer with a 5-second timeout, and write what it found. Plain
-  `simp`, `auto`, `linarith`, `eval` without guessed arguments may be tried
-  directly.
+  run `try0`, then sledgehammer with a 5-second timeout (see "Searching and
+  closing goals"), and write what they found. Plain `simp`, `auto`,
+  `linarith`, `eval` without guessed arguments may be tried directly.
 - A fact just proved in the current development, or located explicitly with
   `find_theorems`, is confirmed rather than guessed.  Apply a syntactically
   matching fact directly; do not run sledgehammer as a ritual when fact
@@ -156,6 +156,48 @@ cd <worktree>
 - Before finishing: `isabelle build` the session, and check that proof
   sketches still describe the proofs.
 
+## Searching and closing goals
+
+- When the obvious method fails, run `try0` in the REPL before sledgehammer.
+  It tries a fixed list of methods (`simp`, `auto`, `blast`, `presburger`,
+  `linarith`, `metis`, ...) and prints `Try this:` with the fastest that
+  worked.  It selects no facts, so pass the ones you suspect: `using foo
+  try0 simp: f_def intro: bar_I`.  With `double n = n + n`, bare `try0` on
+  `even (double n)` finds nothing and `try0 simp: double_def` finds `by
+  (auto simp: double_def)`.  If it fails, sledgehammer, whose fact
+  selection beats a hand search.
+- A diagnostic command sent as a REPL step (`try0`, `find_consts`,
+  `print_facts`, `thm`, `term`) succeeds and is recorded as a step: back it
+  out afterwards (`repl_back`, or the I/R verb `back R` under ic2), or the
+  REPL's text carries it into the theory.
+- `find_theorems` searches the facts of the REPL's context: I/Q
+  `repl_find_theorems(repl, query, max_results)`, the I/R verb
+  `find-theorems R N 'QUERY'` under ic2 (N before the query), or I/Q
+  `explore` with `query='find_theorems'` at a document position.  Criteria
+  combine: a term pattern (the default), `name: foo`, `simp: "pattern"`,
+  `intro`, `elim` and `dest` (rules for the current goal), `solves` (facts
+  that close it), each negatable (`-name: foo`).  A pattern's variables
+  must be schematic or wildcards: `"rev (rev ?xs) = ?xs"` and `"rev (_ @ _)"`
+  match, while `"rev (rev xs) = xs"` names a free variable and finds
+  nothing, also inside a proof that fixes `xs`.
+- `find_consts` has no tool of its own; send it as a step and back it out.
+  Criteria: a type pattern matched as a subterm (the default), `strict:` for
+  the whole type, `name: foo`.  Type variables instantiate, except inside a
+  proof whose statement fixes them: there `'a` is the goal's type and
+  matches no polymorphic constant, so write `_` or a type variable the goal
+  does not use (`find_consts "_ list => _ list => _ list"`).
+- These commands and sledgehammer see only theories imported into the
+  context.  For material in a theory that is not imported, grep the
+  sources (the installation's `src/HOL`, an AFP checkout) rather than
+  importing a large dependency just to look; import it once the development
+  uses it.
+- Attributes: `[simp]` only on rules that rewrite toward a simpler normal
+  form, never on a rule together with its converse or with rules that undo
+  it; a looping simp set shows up as a command that never finishes.
+  `[intro]` for rules concluding a predicate, `[elim]` for case analysis on
+  it, `[dest]` for its consequences, and only when the classical reasoner
+  should use them every time; otherwise pass them (`auto intro: foo_I`).
+
 ## Stating and proving a property
 
 - State a property over the model's definitions (in a code-level model,
@@ -174,8 +216,9 @@ cd <worktree>
   search tractable, and refinement statements over unbounded integers are
   often poor Nitpick targets.  Use the two timeout layers described above,
   report an inconclusive timeout, and continue with proof development.
-- Prove on the simplest equal form: unfold the definition with `simp only:
-  f_def Let_def`, split on the branches, and discharge the leaves with
+- Prove a property of a code-level definition, or a basic rule of any
+  definition, on the simplest equal form: unfold the definition with `simp
+  only: f_def Let_def`, split on the branches, and discharge the leaves with
   `sledgehammer`.  In a code-level model, split on the result type too, and
   a word-level goal usually needs the no-wrap fact (`uint`/`sint` bounds and
   `unat`/`uint` arithmetic lemmas) stated as a `have` first.
@@ -196,6 +239,40 @@ cd <worktree>
   ic2 confirms this, and so does the export check where the project exports
   a model.  A property stated in a locale is finished only once that locale
   has its model lemma.
+
+## Abstract definitions and statements
+
+For a specification or a theory project; a code-level model follows
+`isabelle-modeling` instead.
+
+- Search before defining: a general concept or lemma is probably in HOL,
+  HOL-Library or the AFP already.  Use `find_consts` and `find_theorems`,
+  grep, and Find Facts (`https://search.isabelle.in.tum.de`) for the AFP.  A
+  library constant brings its lemmas; a private copy brings none.  When a
+  large development hinges on whether something exists, ask the user.
+- Work in layers: definitions and statements first, every proof a `sorry`,
+  and the statements reviewed against their English sentences (and
+  `quickcheck` and `nitpick`, as above) before any proof effort.  Then each
+  proof as an Isar skeleton under its sketch, with a `sorry` per step, and
+  the `sorry`s filled one at a time.  A step you cannot see how to fill is
+  a missing intermediate lemma: state it as a lemma of its own and prove it
+  separately.
+- Write statements in structured form: `fixes`, named `assumes`, and
+  `shows`, or `for` and `⋀`, rather than `∀x. P x ⟶ Q x`; `obtains` rather
+  than `∃` in a conclusion; `shows "A" and "B"` rather than `A ∧ B` (but see
+  the `[OF ...]` pitfall below).  The structured form gives named facts and
+  rules that automation applies as they are.
+- Never weaken a statement to get it proved.  A generalization is fine when
+  the original follows by instantiation; say so in the report.
+- After a definition, prove its basic rules: introduction and elimination
+  (or destruction) rules for a predicate, an equation per constructor or
+  case for a function.  Later proofs use those rules and leave the
+  definition folded, so they do not depend on its body.
+- Prefer Isar to `apply` scripts, with the method named: `proof -`,
+  `proof (induction xs)`, `proof (rule ccontr)`.  A bare `proof` applies
+  whatever default rule fits the goal's shape, which the reader then has to
+  work out.  Use `apply` only as a short prelude to a `by`, and split a long
+  proof into named lemmas.
 
 ## Isar pitfalls
 

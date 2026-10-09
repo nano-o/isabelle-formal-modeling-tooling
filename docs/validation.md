@@ -284,3 +284,66 @@ Observations
 : A descriptor saved with CRLF line endings used to pass `sync` and fail
   doctor with `unsupported format_version: 1`; now every verb and doctor
   refuse it, naming the carriage return.
+
+## 2026-10-08: the proving skill's search and statement sections
+
+Candidates
+: isabelle-formal-modeling-tooling `9896af6`, this commit's parent: two
+  sections in `isabelle-proving`. "Searching and closing goals" covers
+  `try0` before sledgehammer, backing diagnostic REPL steps out,
+  `find_theorems` and `find_consts` through I/Q and ic2 with their
+  pattern pitfalls, and rule attributes. "Abstract definitions and
+  statements", for specifications and theory projects, covers searching
+  the libraries before defining, statements before proofs, structured
+  statements, and basic rules after a definition, used instead of
+  unfolding it. AutoCorrode `dbd474f`, as before.
+: agent-board `b215a93`, as before.
+
+Hosts
+: Claude Code 2.1.295 with claude-opus-5-5, in auto permission mode.
+: Codex CLI 0.161.0 with gpt-6-astra at medium reasoning effort, in the
+  workspace-write sandbox with automatic review.
+: Isabelle2025-2, Git 2.43, Python 3.12.3, on Linux.
+
+Setup
+: As in the previous record. The theory host fixture of 2026-10-03, with
+  a third task in a fresh session: a predicate `majority x xs`, for an
+  element occurring in more than half of the positions of a list, and the
+  lemma that a list has at most one majority element. HOL already counts
+  occurrences with `count_list`, and the proof needs one supporting lemma.
+
+Passed
+: `make validate` and `make check-isabelle`.
+: Installers, doctors and the command interface: 76 checks on the bare
+  repository and 75 on the stellar-core clone, all but the check of
+  `init` at the previous `stable`, whose doctors fail while the runtimes
+  are at the candidates.
+: On both hosts, in the theory fixture: discovery of exactly the two
+  project skills and the worker profile; the recursive function, and the
+  locale with its model lemma, as in the 2026-10-03 record; and the
+  majority task. Both hosts read `isabelle-proving`, defined `majority`
+  over HOL's `count_list` instead of a counting function of their own
+  (Codex after grepping `List.thy` for it), proved `majorityI` and
+  `majorityD` right after the definition and used `majorityD`, not the
+  definition, in the uniqueness proof, stated the supporting bound on two
+  distinct counts as a lemma of its own, wrote both lemmas with named
+  assumptions, ran `quickcheck` and `nitpick` in a REPL, and left no
+  diagnostic command or `sorry` in the theory. Every session built,
+  committed and stopped its server, and doctor passed.
+
+Not rerun
+: The behavioural scenarios, link mode on a host, the worker smoke proof
+  and the code-project host fixture: the worker profiles, the board
+  skill, the instruction block and the link code did not change, and the
+  only code-level text the skill changed is the scope of the
+  unfold-and-split rule.
+
+Observations
+: Every proof in the three tasks closed with the first method tried, so
+  no host ran `try0` or sledgehammer, and none called `find_theorems` or
+  `find_consts`; the search section was exercised only by the reuse of
+  `count_list`.
+: No run at the previous `stable` served as a baseline, so the record
+  does not attribute the basic rules to the new section.
+: The four sessions cost $1.25 on Claude Code; on Codex they read 1.45M
+  input tokens, 92% of them cached, and wrote 8.9k.

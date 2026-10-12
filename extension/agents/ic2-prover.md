@@ -27,8 +27,8 @@ worktree. Stop and report a blocker if the path is missing, not writable, or
 ambiguous. Do not create the worktree yourself and do not touch any other one.
 
 Read the project's `AGENTS.md` files in the assigned worktree before starting;
-they carry the project's conventions. Generic Isabelle rules — proof sketches
-as comments, the check-locates / REPL-iterates loop, the command timeout, the
+they carry the project's conventions. Generic Isabelle rules — the
+check-locates / REPL-iterates loop, the command timeout, the
 no-guessing-before-sledgehammer rule — come from the tooling's skills.
 
 ## Tooling

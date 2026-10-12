@@ -121,8 +121,12 @@ cd <worktree>
 
 ## Proof discipline
 
-- Before a proof, write a proof sketch in English as a comment right after
-  the statement; before a definition or lemma, an English explanation.
+- English explanations and proof sketches are optional, not required per
+  declaration. Use clear names and structured proofs. Add prose when it
+  records intent, modeling decisions, assumptions, or correspondence with
+  an external source that the formal text alone does not convey. Preserve
+  the source references and explanations of nonliteral correspondence
+  required by `isabelle-modeling` for code-level models.
 - No proof method with complex facts or arguments you have guessed before
   trying sledgehammer: `by (metis <hand-picked>)`, `by (rule foo [OF bar, of
   ...])`, `by (simp add: <unconfirmed lemmas>)`. Reproduce the step in a REPL,
@@ -153,8 +157,8 @@ cd <worktree>
   it is about because `f` does not exist yet; use `@{text f}` there, and use
   `@{const f}` only after the declaration.
 - Fix Isabelle warnings that take a one-line change; leave the rest.
-- Before finishing: `isabelle build` the session, and check that proof
-  sketches still describe the proofs.
+- Before finishing: `isabelle build` the session, and check that any
+  accompanying prose is still accurate.
 
 ## Searching and closing goals
 
@@ -202,8 +206,9 @@ cd <worktree>
 
 - State a property over the model's definitions (in a code-level model,
   over the code-level definitions or a characterization already proved
-  equal to them, `isabelle-modeling`); write the English sentence it stands
-  for in a `text` block right before it.
+  equal to them, `isabelle-modeling`). For principal specifications and
+  results, include enough prose to review their correspondence with the
+  intended claims.
 - Before proof effort on a new user-facing property, run `quickcheck` and a
   bounded `nitpick` experiment in a REPL.  A counterexample means the property
   or its precondition is wrong, or a definition is.  In a code-level model,
@@ -251,11 +256,11 @@ For a specification or a theory project; a code-level model follows
   library constant brings its lemmas; a private copy brings none.  When a
   large development hinges on whether something exists, ask the user.
 - Work in layers: definitions and statements first, every proof a `sorry`,
-  and the statements reviewed against their English sentences (and
+  and the statements reviewed against the intended claims (and
   `quickcheck` and `nitpick`, as above) before any proof effort.  Then each
-  proof as an Isar skeleton under its sketch, with a `sorry` per step, and
-  the `sorry`s filled one at a time.  A step you cannot see how to fill is
-  a missing intermediate lemma: state it as a lemma of its own and prove it
+  proof as an Isar skeleton with a `sorry` per step, and the `sorry`s filled
+  one at a time.  A step you cannot see how to fill is a missing
+  intermediate lemma: state it as a lemma of its own and prove it
   separately.
 - Write statements in structured form: `fixes`, named `assumes`, and
   `shows`, or `for` and `⋀`, rather than `∀x. P x ⟶ Q x`; `obtains` rather

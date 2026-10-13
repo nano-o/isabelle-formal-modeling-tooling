@@ -435,3 +435,68 @@ Observations
   does not attribute the basic rules to the new section.
 : The four sessions cost $1.25 on Claude Code; on Codex they read 1.45M
   input tokens, 92% of them cached, and wrote 8.9k.
+
+## 2026-10-13: checkout roles
+
+Candidates
+: isabelle-formal-modeling-tooling `5bbfe0a`, this commit's parent: ic2
+  worktrees are marked when created (`ic2.sh worktree add`, `worktree
+  mark`), `ic2.sh preflight` replaces the worker's Git-layout check, and
+  `launch_jedit.sh` records the jEdit it starts under a lock that jEdit
+  inherits, so that jEdit and ic2 each refuse a checkout while the other is
+  live there. Steps 1 to 5 of `docs/jedit-worktree-guard-plan.md`.
+  AutoCorrode `dbd474f`, as before.
+: agent-board `b215a93`, as before.
+
+Hosts
+: Claude Code 2.1.296 with claude-opus-5-5, in auto permission mode.
+: Codex CLI 0.162.1 with gpt-6-astra at medium reasoning effort, in the
+  workspace-write sandbox with automatic review.
+: Isabelle2025-2, Git 2.43, Python 3.12.3, on Linux.
+
+Setup
+: As in the previous record. A host fixture of two scratch clones of the
+  demo, updated to the candidate: one for discovery and the worker smoke
+  proof, whose brief no longer says how to create the worktree, and one
+  whose coordinator is told to assign the worker the clone's own checkout.
+: A jEdit fixture: in a scratch clone at the candidate, an ic2 worktree, a
+  real ic2 server and a real jEdit started by `launch_jedit.sh`, both in
+  the fixtures' Isabelle user home.
+
+Passed
+: `make validate`, with the new `tests/launch_jedit_test.sh` and the role
+  cases of `tests/ic2_test.sh` in a normal and a `.bare` repository, and
+  `make check-isabelle`.
+: Installers, doctors and the command interface: 76 checks on the bare
+  repository and 75 on the stellar-core clone, all but the check of
+  `init` at the previous `stable`, whose doctors fail while the runtimes
+  are at the candidates.
+: The jEdit fixture, 10 checks: the launcher refused while the worktree's
+  ic2 server ran; once the server stopped, jEdit launched, its JVM held
+  the record open, and `preflight`, `start` and a second launch refused;
+  after jEdit exited, `preflight` and `start` passed.
+: On both hosts: discovery of one copy of each skill and of the worker
+  profile; the worker smoke proof, whose coordinator created the worktree
+  with `ic2.sh worktree add` unprompted and whose worker passed
+  `preflight`, proved the lemma, committed and stopped its server; and,
+  assigned the clone's own unmarked checkout, a worker that stopped at
+  `preflight` and changed nothing.
+
+Not rerun
+: The behavioural scenarios, link mode on a host and the theory host
+  fixture: the board skill, the instruction block and the link code did
+  not change, and the proving skill changed only in naming the two
+  workflows' checkouts and in how the coordinator creates a worktree,
+  which the smoke proof exercised.
+: The worker's I/Q probe: port 8765 was a jEdit outside the fixtures, so
+  the smoke brief told both agents not to call I/Q, and no session did.
+
+Observations
+: As in earlier runs, neither host reported an agent-board digest on an
+  empty board, and Codex reported no MCP server in discovery, this time
+  with a jEdit serving I/Q.
+: Codex's refusing worker also tried to register on the board, which
+  failed because `.git/agent-board` was read-only in its sandbox
+  (agent-board, not this repository).
+: The three Claude Code sessions cost $1.20; on Codex they read 0.89M
+  input tokens, 93% of them cached, and wrote 3.7k.

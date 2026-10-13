@@ -173,17 +173,62 @@ match their source.
    worktree. The project-specific steps are kept outside this repository,
    since these docs name no private projects or local paths.
 
-## 7. Optional: the shared I/Q port
+## 7. The bridge finds its own jEdit
 
-Every checkout's `.mcp.json` uses I/Q bridge port 8765, so every agent
-session on the machine reaches the one jEdit, including sessions in other
-repositories. I/Q refuses writes only outside jEdit's write root. So a
-session in another checkout, or another repository, can read jEdit's
-buffers and edit them inside that root.
+Steps 1 to 6 do not depend on this step; it can ship after them.
 
-Once step 3 exists, `extension/bin/iq-bridge.sh` could refuse to start
-unless its checkout is the one jEdit recorded. The root cause is the same:
-nothing records which checkout owns jEdit.
+### How ports work today
+
+- Each jEdit's I/Q plugin binds the first free loopback port from 8765
+  upward, over 100 ports (`AutoCorrode/iq/src/IQPlugin.scala`,
+  `IQServer.PortScanSpan`). The base port is a constant, and the bound
+  port is reported only in jEdit's output panel.
+- Every bridge connects to `IQ_MCP_BRIDGE_PORT`, which is 8765 in every
+  project's `.mcp.json` and Codex configuration and in
+  `extension/agents/ic2_prover.toml`.
+- Every jEdit and every bridge use the same token file, so any bridge
+  authenticates to any jEdit.
+
+So every agent session on the machine reaches whichever jEdit holds 8765,
+including sessions in other repositories. I/Q refuses writes only outside
+that jEdit's write root, so such a session can read its buffers and edit
+them inside that root. With two jEdits open, agents in the second one's
+checkout reach the first jEdit, with no warning. Which jEdit holds 8765
+depends on start order: restart the first while the second is open and
+the second takes it.
+
+### Until this step ships
+
+Run one jEdit at a time. To inspect an ic2 worktree, close the usual
+jEdit, launch one in the worktree, and reopen the usual one when done.
+Agents in the usual checkout have no I/Q in the meantime.
+
+### The change
+
+1. **I/Q reports its roots.** Add a read-only call to the plugin, in the
+   `AutoCorrode` fork, that returns the server's mutation and read roots.
+   No current call does: the roots appear only in refusal messages. Bump
+   the tooling's `AutoCorrode` pin.
+2. **The bridge scans.** `iq_bridge.py`, or `extension/bin/iq-bridge.sh`
+   before it, tries the ports from 8765 upward and connects to the jEdit
+   whose mutation root is inside the bridge's checkout. If none is, it
+   fails with a message naming the jEdits it found and their roots,
+   instead of connecting to another checkout's jEdit. The bridge's
+   checkout is the top level of the Git worktree it starts in.
+3. **The fixed port goes.** `IQ_MCP_BRIDGE_PORT` stops being required in
+   the project configuration; if set, it pins the port and skips the scan,
+   for the jai sandbox and for debugging. Update `extension/project/`,
+   `scripts/render-agents.sh`, `docs/delivery-contracts.md` and the
+   install tests that expect 8765.
+
+This replaces the earlier idea of having the bridge refuse unless its
+checkout is the one in step 3's record: that check assumed one jEdit, and
+would still connect a correct checkout to the wrong jEdit when two run.
+
+Tests: two fake I/Q servers on adjacent ports with different roots; a
+bridge in each checkout connects to its own server, and a bridge in a
+third checkout fails with the message. Then a manual run with two real
+jEdits.
 
 ## Open questions
 
@@ -191,13 +236,13 @@ nothing records which checkout owns jEdit.
   mount of the common Git directory optional. `preflight` needs it to read
   the marker. Proposed: make it required, since the worker's Git commands
   need it anyway.
-- **A second jEdit.** Inspecting an ic2 worktree means running jEdit in it,
-  while the usual jEdit may still be open on another checkout. Both would
-  use I/Q port 8765. Check what `launch_jedit.sh` and the I/Q plugin do
-  with a second jEdit today, and whether to close the first one or give
-  the second its own port. Opening the worktree's theories in the existing
-  jEdit is no substitute: both checkouts have the same session and theory
-  names.
+- **A second jEdit.** Two things are unverified: whether jEdit's own
+  single-instance server hands a second launch to the running jEdit
+  instead of starting a new one, and whether two jEdits sharing one
+  `ISABELLE_HOME_USER` interfere. Both need one manual try before step 7's
+  manual run. Opening an ic2 worktree's theories in the usual jEdit is no
+  substitute for a second jEdit: both checkouts have the same session and
+  theory names.
 - **Existing checkouts.** Which existing checkouts are ic2 worktrees and get
   marked during adoption is a per-project question, answered outside this
   repository.
@@ -216,3 +261,6 @@ nothing records which checkout owns jEdit.
   2, 3 and 5 now check whether the other writer is live instead: jEdit
   refuses only while the checkout's ic2 server runs, and ic2 refuses only
   while a live jEdit owns the checkout.
+- Step 7 now records how I/Q ports work. Until it ships, run one jEdit at
+  a time. Its change has the bridge find the jEdit that owns its checkout,
+  replacing the earlier "refuse unless recorded" idea.

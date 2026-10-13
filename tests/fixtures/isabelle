@@ -49,6 +49,13 @@ case "${1:-}" in
         ;;
     esac
     ;;
+  jedit)
+    # A running jEdit: stays up while MOCK_JEDIT_UNTIL names an existing file.
+    printf 'mock jedit: %s\n' "$*"
+    while [[ -n "${MOCK_JEDIT_UNTIL:-}" && -e "$MOCK_JEDIT_UNTIL" ]]; do
+      sleep 0.1
+    done
+    ;;
   *)
     printf 'unexpected mock isabelle command: %s\n' "$*" >&2
     exit 64

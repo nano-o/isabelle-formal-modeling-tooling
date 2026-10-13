@@ -219,8 +219,8 @@ only caller never reads.
    characterizations), try `quickcheck` and `nitpick` first, then prove
    under the `isabelle-proving` skill.
 
-Edit theories as `isabelle-proving` says: through Isabelle/IQ in the main
-worktree or ic2 in a dedicated worktree, as chosen by the invoker; on disk,
+Edit theories as `isabelle-proving` says: through Isabelle/IQ in the jEdit
+worktree or ic2 in an ic2 worktree, as chosen by the invoker; on disk,
 Isabelle symbols are ASCII escapes.
 
 ## 4. Reviewing a code-level model

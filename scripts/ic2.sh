@@ -17,16 +17,29 @@ one named by --project-root. The descriptor supplies the session directory,
 the base session, and the heap bound; the server name is derived from the
 checkout root, so every worktree gets its own server.
 
+ic2 workers edit theories on disk, so they work only in an ic2 worktree: a
+checkout marked as one when it was created. `start` and `check FILE...`
+refuse while a jEdit that launch_jedit.sh started runs on the checkout.
+
 Actions:
   start [OPTIONS]      Start this checkout's server (see start-ic2.sh --help)
   stop [OPTIONS]       Stop this checkout's server
   name                 Print this checkout's derived server name
+  preflight            Succeed only in a marked ic2 worktree that no running
+                       jEdit owns; workers run it before editing anything
+  worktree add PATH -b BRANCH [BASE]
+                       Create a linked worktree on a new branch from BASE
+                       (default HEAD) and mark it as an ic2 worktree
+  worktree mark        Mark this checkout as an ic2 worktree
+  worktree unmark      Remove that mark
   wait [OPTIONS]       Wait non-interactively for a terminal check state
   health               Show one resource-usage snapshot of the server's processes
   IC2_COMMAND [...]    Run `isabelle ic2 ...` against this checkout's server,
                        with relative theory paths resolved from the session dir
 
 Examples:
+  ic2.sh worktree add ../proof-1 -b proof-1
+  ic2.sh preflight
   ic2.sh start --cpus 8
   ic2.sh server status
   ic2.sh check Session/Theory.thy --command-timeout 15
@@ -72,6 +85,103 @@ board_note() {
     post --kind note "$*" >/dev/null 2>&1 || true
 }
 
+# refuse_beside_jedit: die while a jEdit started by launch_jedit.sh runs on
+# this checkout, whose theory buffers a disk edit or check would race.
+refuse_beside_jedit() {
+  jedit_owns "$PROJECT_CHECKOUT_ROOT" || return 0
+  die "jEdit owns $PROJECT_CHECKOUT_ROOT ($JEDIT_OWNER).
+ic2 does not work beside it: close that jEdit first, or work in an ic2 worktree."
+}
+
+# preflight: exit 1 with the reason unless this checkout is a marked ic2
+# worktree that no running jEdit owns.
+preflight() {
+  local root="$PROJECT_CHECKOUT_ROOT"
+  if ! checkout_git_path "$root" . >/dev/null; then
+    printf 'preflight: refused: %s is not a Git checkout.\n' "$root" >&2
+    exit 1
+  fi
+  if ! ic2_worktree_marked "$root"; then
+    printf 'preflight: refused: %s is not marked as an ic2 worktree.\n' "$root" >&2
+    cat >&2 <<'EOF'
+The coordinator creates one with `ic2.sh worktree add` or marks one
+with `ic2.sh worktree mark`; a worker never marks its own.
+EOF
+    exit 1
+  fi
+  if jedit_owns "$root"; then
+    printf 'preflight: refused: jEdit owns %s (%s).\n' "$root" "$JEDIT_OWNER" >&2
+    printf 'ic2 can work here again once that jEdit exits.\n' >&2
+    exit 1
+  fi
+  printf 'preflight: ok: %s is an ic2 worktree and no jEdit owns it\n' "$root"
+}
+
+# mark_ic2_worktree DIR: write the ic2-worktree marker of the checkout
+# holding DIR.
+mark_ic2_worktree() {
+  local marker
+  marker="$(checkout_git_path "$1" "$IC2_WORKTREE_MARKER")" || die "not in a Git checkout: $1"
+  if [[ "$DRY_RUN" == true ]]; then
+    printf 'mark: %s\n' "$marker"
+    return 0
+  fi
+  mkdir -p "$(dirname "$marker")"
+  printf 'marked=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$marker"
+  printf 'Marked as an ic2 worktree: %s\n' "$(git -C "$1" rev-parse --show-toplevel)"
+}
+
+worktree_action() {
+  local subaction="${1:-}" branch="" path="" base="" marker
+  local -a git_args
+  shift || true
+  case "$subaction" in
+    add)
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          -b) [[ -n "${2:-}" ]] || die "worktree add -b requires a branch name"; branch="$2"; shift 2 ;;
+          -*) die "unknown worktree add option: $1" ;;
+          *)
+            if [[ -z "$path" ]]; then path="$1"
+            elif [[ -z "$base" ]]; then base="$1"
+            else die "worktree add takes one PATH and at most one BASE"
+            fi
+            shift ;;
+        esac
+      done
+      [[ -n "$path" && -n "$branch" ]] || die "usage: ic2.sh worktree add PATH -b BRANCH [BASE]"
+      # git -C would resolve a relative PATH against the checkout root.
+      [[ "$path" == /* ]] || path="$PWD/$path"
+      git_args=(worktree add -b "$branch" "$path")
+      [[ -z "$base" ]] || git_args+=("$base")
+      if [[ "$DRY_RUN" == true ]]; then
+        printf 'git -C %q' "$PROJECT_CHECKOUT_ROOT"
+        printf ' %q' "${git_args[@]}"
+        printf '\nthen mark %q as an ic2 worktree\n' "$path"
+        return 0
+      fi
+      git -C "$PROJECT_CHECKOUT_ROOT" "${git_args[@]}"
+      mark_ic2_worktree "$path"
+      ;;
+    mark)
+      [[ $# -eq 0 ]] || die "worktree mark takes no arguments; run it inside the checkout or pass --project-root"
+      mark_ic2_worktree "$PROJECT_CHECKOUT_ROOT"
+      ;;
+    unmark)
+      [[ $# -eq 0 ]] || die "worktree unmark takes no arguments"
+      marker="$(checkout_git_path "$PROJECT_CHECKOUT_ROOT" "$IC2_WORKTREE_MARKER")" ||
+        die "not in a Git checkout: $PROJECT_CHECKOUT_ROOT"
+      if [[ "$DRY_RUN" == true ]]; then
+        printf 'unmark: %s\n' "$marker"
+        return 0
+      fi
+      rm -f -- "$marker"
+      printf 'Not an ic2 worktree: %s\n' "$PROJECT_CHECKOUT_ROOT"
+      ;;
+    *) die "usage: ic2.sh worktree add PATH -b BRANCH [BASE] | mark | unmark" ;;
+  esac
+}
+
 reject_fixed_options() {
   local option
   for option in "$@"; do
@@ -91,8 +201,18 @@ case "$action" in
     printf '%s\n' "$SERVER_NAME"
     exit 0
     ;;
+  preflight)
+    [[ $# -eq 0 ]] || die "preflight takes no arguments"
+    preflight
+    exit 0
+    ;;
+  worktree)
+    worktree_action "$@"
+    exit 0
+    ;;
   start)
     reject_fixed_options "$@"
+    refuse_beside_jedit
     start_args=(--session-dir "$SESSION_DIR" --session "$SESSION" --name "$SERVER_NAME")
     [[ -z "$MAX_HEAP" ]] || start_args+=(--max-heap "$MAX_HEAP")
     [[ "$DRY_RUN" == false ]] || start_args+=(--dry-run)
@@ -234,7 +354,10 @@ named_command=()
 if [[ "${command_args[0]}" == check ]]; then
   case "${command_args[1]:-}" in
     status|cancel|attach|"") named_command=("${command_args[@]}" -n "$SERVER_NAME") ;;
-    *) named_command=(check -n "$SERVER_NAME" "${command_args[@]:1}") ;;
+    *)
+      refuse_beside_jedit
+      named_command=(check -n "$SERVER_NAME" "${command_args[@]:1}")
+      ;;
   esac
 else
   named_command=("${command_args[@]}" -n "$SERVER_NAME")

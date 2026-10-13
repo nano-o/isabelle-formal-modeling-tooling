@@ -353,6 +353,66 @@ server_status_pid() {
 }
 
 # ---------------------------------------------------------------------------
+# Checkout roles
+#
+# A checkout's role is recorded, never inferred from Git's layout: in a
+# `.bare` repository every checkout is a linked worktree. Both records live in
+# the checkout's per-worktree Git data (`git rev-parse --git-path`), outside
+# the working tree, so they are never committed and never reach another
+# checkout.
+#
+# - IC2_WORKTREE_MARKER marks a checkout where ic2 workers may edit theories
+#   on disk. `ic2.sh worktree add` and `ic2.sh worktree mark` write it.
+# - JEDIT_RECORD names the jEdit that launch_jedit.sh started on a directory
+#   of the checkout: its pid and I/Q write root. The launcher takes an
+#   exclusive lock on the file and jEdit inherits it across the final exec,
+#   so the record is live exactly while that jEdit runs. The lock, not the
+#   pid, decides: a pid can be reused, and from a private PID namespace such
+#   as a JAI jail the host's processes are invisible.
+
+# Read by the scripts that source this library; ShellCheck cannot see them.
+# shellcheck disable=SC2034
+IC2_WORKTREE_MARKER="isabelle-tooling/ic2-worktree"
+# shellcheck disable=SC2034
+JEDIT_RECORD="isabelle-tooling/jedit"
+
+# checkout_git_path DIR RELATIVE: the absolute path of RELATIVE in the
+# per-worktree Git data of the checkout holding DIR; fails outside Git.
+checkout_git_path() {
+  git -C "$1" rev-parse --path-format=absolute --git-path "$2" 2>/dev/null
+}
+
+# ic2_worktree_marked DIR: whether the checkout holding DIR is marked as an
+# ic2 worktree.
+ic2_worktree_marked() {
+  local marker
+  marker="$(checkout_git_path "$1" "$IC2_WORKTREE_MARKER")" || return 1
+  [[ -f "$marker" ]]
+}
+
+# jedit_owns DIR: whether a jEdit that launch_jedit.sh started still runs on
+# the checkout holding DIR. On success JEDIT_OWNER describes it as "pid PID,
+# write root ROOT". A record nobody holds locked is a jEdit that has exited.
+# Dies when the lock cannot be tested, so call it outside `$(...)`.
+JEDIT_OWNER=""
+jedit_owns() {
+  local record rc=0
+  JEDIT_OWNER=""
+  record="$(checkout_git_path "$1" "$JEDIT_RECORD")" || return 1
+  [[ -f "$record" ]] || return 1
+  require_command flock
+  # The shared lock is free unless the jEdit holding the exclusive one runs.
+  (exec 9<"$record" && flock -n -E 75 -s 9) 2>/dev/null || rc=$?
+  case "$rc" in
+    0) return 1 ;;
+    75) ;;
+    *) die "cannot test the lock on the jEdit record $record" ;;
+  esac
+  # shellcheck disable=SC2034
+  JEDIT_OWNER="pid $(sed -n 's/^pid=//p' "$record"), write root $(sed -n 's/^root=//p' "$record")"
+}
+
+# ---------------------------------------------------------------------------
 # agent-board, optional
 #
 # A checkout uses agent-board when agent-board.conf is at its root. The

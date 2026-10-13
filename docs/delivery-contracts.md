@@ -416,7 +416,7 @@ exists at the checkout root. The adapter never reads `board_revision`.
   executable.
 - Proof-specific resources, named in the Isabelle skills and profiles:
   theory files, `refs/heads/BRANCH` for proof branches, and `token:jedit`
-  for the human's main-worktree jEdit session.
+  for the human's jEdit session in the jEdit worktree.
 
 **Doctor additions.** Besides today's checks, Isabelle doctor fails on:
 

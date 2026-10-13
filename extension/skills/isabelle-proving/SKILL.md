@@ -1,6 +1,6 @@
 ---
 name: isabelle-proving
-description: Editing Isabelle theories and developing proofs with this tooling — the two workflows (Isabelle/IQ in the main jEdit worktree, or a native ic2 server in a dedicated Git worktree), the check-locates / REPL-iterates loop, the command timeout, prover-death recovery, searching and closing goals (try0, sledgehammer, find_theorems, find_consts), writing abstract definitions and statements, and the Isar and I/R pitfalls that cost agents hours. Use whenever a task touches a .thy file, a proof, a sorry, or an Isabelle error.
+description: Editing Isabelle theories and developing proofs with this tooling — the two workflows (Isabelle/IQ in the jEdit worktree, or a native ic2 server in a dedicated ic2 worktree), the check-locates / REPL-iterates loop, the command timeout, prover-death recovery, searching and closing goals (try0, sledgehammer, find_theorems, find_consts), writing abstract definitions and statements, and the Isar and I/R pitfalls that cost agents hours. Use whenever a task touches a .thy file, a proof, a sorry, or an Isabelle error.
 ---
 
 # Proving with Isabelle through this tooling
@@ -8,17 +8,18 @@ description: Editing Isabelle theories and developing proofs with this tooling �
 Two workflows exist, and the invoker chooses one; never mix them in one
 worktree.
 
-- **Isabelle/IQ in the main worktree.** A human has jEdit open on the theory.
-  Agents read and edit theory buffers only through the I/Q MCP server (`iq`)
-  and iterate in its I/R REPL. Never write a theory file on disk there: jEdit
-  owns the buffers and a disk write desynchronizes them.
-- **ic2 in a dedicated worktree.** No jEdit owns the files, so theories are
-  edited directly on disk and checked through a native ic2 server that the
-  worktree owns. This is the workflow for autonomous proof work and for the
-  `ic2-prover` worker.
+- **Isabelle/IQ in the jEdit worktree**, the checkout where a human has
+  jEdit open on the theory. Agents read and edit theory buffers only through
+  the I/Q MCP server (`iq`) and iterate in its I/R REPL. Never write a theory
+  file on disk there: jEdit owns the buffers and a disk write desynchronizes
+  them.
+- **ic2 in an ic2 worktree**, a dedicated worktree marked as one when it was
+  created. No jEdit owns the files, so theories are edited directly on disk
+  and checked through a native ic2 server that the worktree owns. This is the
+  workflow for autonomous proof work and for the `ic2-prover` worker.
 
 Plans and instructions must describe theory editing as "Isabelle/IQ in the
-main worktree, or ic2 in a dedicated worktree, as chosen by the invoker", not
+jEdit worktree, or ic2 in an ic2 worktree, as chosen by the invoker", not
 hard-code one.
 
 ## ic2: one server per worktree
@@ -29,6 +30,7 @@ worktree's own server name:
 
 ```bash
 cd <worktree>
+"$ISABELLE_TOOLING_ROOT/scripts/ic2.sh" preflight            # a marked ic2 worktree no jEdit owns?
 "$ISABELLE_TOOLING_ROOT/scripts/ic2.sh" start --cpus 8       # already running is success
 "$ISABELLE_TOOLING_ROOT/scripts/ic2.sh" server status
 "$ISABELLE_TOOLING_ROOT/scripts/ic2.sh" check <Session>/<Theory>.thy --command-timeout 15
@@ -39,6 +41,14 @@ cd <worktree>
 "$ISABELLE_TOOLING_ROOT/scripts/ic2.sh" stop
 ```
 
+- The role of a checkout is recorded in its Git data, never inferred from
+  Git's layout. `ic2.sh worktree add <path> -b <branch> [<base>]` creates an
+  ic2 worktree and marks it; `ic2.sh worktree mark` marks an existing one.
+  `preflight` passes only in a marked worktree that no running jEdit owns,
+  and `start` and `check` refuse while a jEdit owns the checkout.
+  `launch_jedit.sh` records the jEdit it starts and refuses while the
+  checkout's ic2 server runs, so a finished worktree whose server has
+  stopped can be opened in jEdit for inspection.
 - The server starts from the descriptor's `ic2_base_session` (`HOL`), never
   from the project session: as the logic, project theories would be heap
   nodes with no per-command diagnostics or `sorry` positions after edits.
@@ -298,8 +308,9 @@ For a specification or a theory project; a code-level model follows
 ## Delegating autonomous proof work
 
 When asked to take ownership of a proof job, the coordinator creates the
-branch and linked worktree (inside the session's allowed directories, or asks
-the human to restart with `--add-dir`), inspects the main worktree first and
+branch and ic2 worktree with `ic2.sh worktree add` (inside the session's
+allowed directories, or asks the human to restart with `--add-dir`), inspects
+the jEdit worktree first and
 asks which committed state to use if relevant uncommitted changes make the
 base ambiguous (never stash, copy, or discard them), and delegates to the
 `ic2-prover` worker with an absolute worktree path, the exact proof target,
@@ -315,7 +326,7 @@ worker's mode and state it on the brief's first line, `Mode: independent.
 Handle: HANDLE.` or `Mode: supervised by HANDLE.`; a brief without one makes
 an independent worker. The proof resources on the board are theory files,
 proof branches (`refs/heads/<branch>`) and `token:jedit`, the human's I/Q
-editing session in the main worktree, which an agent claims before editing
+editing session in the jEdit worktree, which an agent claims before editing
 through I/Q there.
 
 - **Independent**, the usual mode for an autonomous proof job: the

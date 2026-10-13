@@ -60,3 +60,26 @@ assert_output_contains() {
     return 1
   fi
 }
+
+# git_project DIR: a Git repository at DIR holding a copy of the test project,
+# committed on main, with Git isolated from the user's configuration.
+git_project() {
+  export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+  export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid
+  export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
+  cp -R "$PROJECT" "$1"
+  git -C "$1" init -q -b main
+  git -C "$1" add -A
+  git -C "$1" commit -qm "test project"
+}
+
+# wait_for_line FILE PATTERN: wait up to ten seconds for a line of FILE to
+# match the extended regular expression PATTERN.
+wait_for_line() {
+  local _
+  for _ in $(seq 100); do
+    grep -Eq -- "$2" "$1" 2>/dev/null && return 0
+    sleep 0.1
+  done
+  fail "no line matching $2 in $1"
+}

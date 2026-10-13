@@ -11,7 +11,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/common.sh"
 SOURCE="$TOOLING_ROOT/agents/ic2-prover.instructions.md"
 CLAUDE_TARGET="$TOOLING_ROOT/extension/agents/ic2-prover.md"
 CODEX_TARGET="$TOOLING_ROOT/extension/agents/ic2_prover.toml"
-DESCRIPTION="Autonomous Isabelle proof worker for an already-created dedicated ic2 Git worktree. Delegate a proof target to it once a coordinating agent has created that worktree. Never use it for work in the main jEdit worktree."
+DESCRIPTION="Autonomous Isabelle proof worker for an already-created dedicated ic2 Git worktree. Delegate a proof target to it once a coordinating agent has created and marked that worktree (ic2.sh worktree add). Never use it in the jEdit worktree."
 
 render_claude() {
   cat <<EOF
@@ -41,7 +41,7 @@ EOF
   cat <<'EOF'
 '''
 
-# A proof worker must never attach to the human's live main-worktree jEdit.
+# A proof worker must never attach to the human's live jEdit.
 # Agent files are parsed standalone, so the server is declared, disabled.
 [mcp_servers.iq]
 command = "python3"

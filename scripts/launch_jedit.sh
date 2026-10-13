@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-TOOLING_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+# shellcheck source=common.sh disable=SC1091
+source "$SCRIPT_DIR/common.sh"
 
 PROJECT_DIR="$PWD"
 ISABELLE_CMD="${ISABELLE:-}"
@@ -23,6 +24,10 @@ Usage: launch_jedit.sh [OPTIONS] [THEORY.thy ...]
 
 Launch Isabelle/jEdit with I/Q restricted to a theory project and I/R pointed
 at this AutoCorrode checkout.
+
+jEdit and an ic2 server never work on one checkout at once. The launcher
+refuses while the checkout's ic2 server runs, and records this jEdit in the
+checkout's Git data so that ic2 refuses while it runs.
 
 Options:
   --project DIR       Theory project directory (default: current directory)
@@ -50,11 +55,6 @@ Examples:
   scripts/launch_jedit.sh --project ../MyProject --session MySession Foo.thy
   scripts/launch_jedit.sh --venv /home/me/.venvs/isabelle-ir Foo.thy
 EOF
-}
-
-die() {
-  echo "ERROR: $*" >&2
-  exit 2
 }
 
 require_value() {
@@ -213,6 +213,23 @@ fi
 [[ -x "$ISABELLE_CMD" ]] || die "Isabelle executable is not executable: $ISABELLE_CMD"
 ISABELLE_CMD="$(cd "$(dirname "$ISABELLE_CMD")" && pwd -P)/$(basename "$ISABELLE_CMD")"
 
+# The checkout's ic2 server may have a worker editing theories on disk. Its
+# name is derived from the checkout that carries the project descriptor.
+if IC2_CHECKOUT="$(find_checkout_root "$PROJECT_DIR")"; then
+  require_command openssl
+  IC2_SERVER="$(derive_server_name "$IC2_CHECKOUT")"
+  if (export_ic2_environment && "$ISABELLE_CMD" ic2 server status -n "$IC2_SERVER") >/dev/null 2>&1; then
+    die "this checkout's ic2 server is running: $IC2_SERVER
+An ic2 worker may be editing its theories on disk. If its work has ended,
+stop the server first:
+  $(printf '%q' "$SCRIPT_DIR/ic2.sh") --project-root $(printf '%q' "$IC2_CHECKOUT") stop"
+  fi
+fi
+JEDIT_RECORD_FILE="$(checkout_git_path "$PROJECT_DIR" "$JEDIT_RECORD")" || JEDIT_RECORD_FILE=""
+if jedit_owns "$PROJECT_DIR"; then
+  die "a jEdit launched on this checkout is still running ($JEDIT_OWNER)"
+fi
+
 LAUNCH_PATH="$PATH"
 if [[ -n "$IR_VENV" ]]; then
   [[ -d "$IR_VENV" ]] || die "Python virtual environment does not exist: $IR_VENV"
@@ -265,6 +282,7 @@ echo "I/Q token file:  $IQ_TOKEN_FILE"
 echo "I/R home:        $IR_HOME"
 echo "Python:          $(PATH="$LAUNCH_PATH" command -v python3)"
 echo "Isabelle:        $ISABELLE_CMD"
+echo "jEdit record:    ${JEDIT_RECORD_FILE:-(none: not in a Git checkout)}"
 
 if [[ "$DRY_RUN" == true ]]; then
   printf 'Command:          env PATH=%q ISABELLE_IR_HOME=%q IQ_AUTH_TOKEN=%q IQ_MCP_ALLOWED_ROOTS=%q IQ_MCP_ALLOWED_READ_ROOTS=%q' \
@@ -272,6 +290,20 @@ if [[ "$DRY_RUN" == true ]]; then
   printf ' %q' "$ISABELLE_CMD" "${JEDIT_ARGS[@]}"
   printf '\n'
   exit 0
+fi
+
+# jEdit inherits this descriptor, and the exclusive lock on it, across the
+# exec below. The lock goes when jEdit exits, which is how ic2 knows.
+if [[ -n "$JEDIT_RECORD_FILE" ]]; then
+  require_command flock
+  if mkdir -p "$(dirname "$JEDIT_RECORD_FILE")" 2>/dev/null &&
+      { exec {JEDIT_LOCK_FD}<>"$JEDIT_RECORD_FILE"; } 2>/dev/null; then
+    flock -n "$JEDIT_LOCK_FD" || die "another jEdit is starting on this checkout: $JEDIT_RECORD_FILE"
+    printf 'pid=%s\nroot=%s\n' "$$" "$PROJECT_DIR" >"$JEDIT_RECORD_FILE"
+  else
+    echo "WARNING: cannot write the jEdit record $JEDIT_RECORD_FILE;" >&2
+    echo "ic2 will not see that this jEdit owns the checkout." >&2
+  fi
 fi
 
 exec env \

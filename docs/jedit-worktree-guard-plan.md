@@ -1,6 +1,6 @@
 # Plan: knowing which checkout jEdit owns
 
-Proposed on 2026-10-12. Not yet reviewed.
+Proposed on 2026-10-12. Steps 1 to 5 implemented on 2026-10-13.
 
 The occasion is a project whose Git repository was converted to the `.bare`
 layout: the repository lives in `PROJECT/.bare`, `PROJECT/.git` reads
@@ -73,7 +73,7 @@ Done means:
 
 Add `ic2.sh worktree add <path> -b <branch> [<base>]`, which runs `git
 worktree add` and then writes a marker. Add `ic2.sh worktree mark` for a
-worktree that already exists.
+worktree that already exists, and `ic2.sh worktree unmark` to undo it.
 
 The marker lives at `$(git rev-parse --git-path
 isabelle-tooling/ic2-worktree)`:
@@ -103,9 +103,20 @@ jEdit's write root (step 3). The prover instructions then say: run
 `launch_jedit.sh` already knows the write root: it passes it to jEdit as
 `IQ_MCP_ALLOWED_ROOTS`. It writes its pid and that root to `$(git
 rev-parse --git-path isabelle-tooling/jedit)`. The script ends with `exec`,
-so that pid becomes jEdit's and nothing runs on exit to remove the file. A
-record whose pid is dead counts as no record, which is what lets ic2 work
-in a checkout again after its jEdit closes.
+so nothing runs on exit to remove the file. Instead the launcher holds an
+exclusive `flock` on the file, and jEdit inherits the descriptor across
+the `exec` and Isabelle's launcher chain. A record nobody holds locked
+counts as no record, which is what lets ic2 work in a checkout again after
+its jEdit closes.
+
+The lock, not the pid, decides whether the jEdit is live. A pid can be
+reused, and a private PID namespace such as a JAI jail cannot see the
+host's processes, so a pid test there would take a running jEdit for a
+dead one. The pid stays in the record for messages; it is the launcher's
+own, which after the `exec`s is the shell that runs jEdit's JVM and waits
+for it. The lock also refuses a second launch on a checkout whose jEdit is
+still running. If the record cannot be written, for instance because a
+jail mounts the Git data read-only, the launcher warns and launches.
 
 It refuses to launch while this checkout's ic2 server is running: the
 server is named after the checkout (`ic2.sh name`), and `isabelle ic2
@@ -163,9 +174,9 @@ match their source.
 
 ## 6. Order of work
 
-1. Steps 1 to 5 on this branch, which starts at `stable` (`80d6118`, one
-   commit ahead of `main`). `make validate` and `make check-isabelle` pass
-   at its end.
+1. Steps 1 to 5 on this branch, which starts at `main` (`7a9cf61`,
+   `stable` plus the removal of two finished plans). `make validate` and
+   `make check-isabelle` pass at its end.
 2. Validation and the validation record, as `docs/validation.md`
    describes; then fast-forward `stable`.
 3. Adoption: in each project that uses the tooling, `isabelle-tooling
@@ -232,10 +243,9 @@ jEdits.
 
 ## Open questions
 
-- **The jai sandbox.** `docs/jai-agent-isolation.md` calls the read-only
-  mount of the common Git directory optional. `preflight` needs it to read
-  the marker. Proposed: make it required, since the worker's Git commands
-  need it anyway.
+- **The jai sandbox.** Resolved: `docs/jai-agent-isolation.md` now
+  requires the read-only mount of the common Git directory, which
+  `preflight` needs to read the marker.
 - **A second jEdit.** Two things are unverified: whether jEdit's own
   single-instance server hands a second launch to the running jEdit
   instead of starting a new one, and whether two jEdits sharing one
@@ -264,3 +274,9 @@ jEdits.
 - Step 7 now records how I/Q ports work. Until it ships, run one jEdit at
   a time. Its change has the bridge find the jEdit that owns its checkout,
   replacing the earlier "refuse unless recorded" idea.
+- Steps 1 to 5 implemented, on this branch rebased onto `main`. Step 3
+  decides liveness by a lock on the record instead of the pid, for the
+  reasons now given there. The jai question is resolved by making the
+  common Git directory mount required. `tests/launch_jedit_test.sh` holds
+  step 5's launcher cases, with a mock `isabelle jedit` that stays up
+  while a file exists.

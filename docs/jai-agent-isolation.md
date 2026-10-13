@@ -10,10 +10,10 @@ as `/path/to/project` are placeholders.*
 
 This document describes how to run proof agents under
 [JAI](https://jai.scs.stanford.edu/) without giving them Git credentials while
-preserving both supported OfferExchange workflows:
+preserving both supported workflows:
 
-- Isabelle/jEdit with I/Q and I/R in the main worktree; and
-- headless ic2 in a dedicated Git worktree.
+- Isabelle/jEdit with I/Q and I/R in the jEdit worktree; and
+- headless ic2 in a dedicated ic2 worktree.
 
 The two workflows cross the jail boundary differently. I/Q is already an
 authenticated, root-scoped capability. ic2 currently reaches its container
@@ -29,9 +29,8 @@ workflow rules in [`formal/AGENTS.md`](../../AGENTS.md).
 - Run each agent in a named JAI jail in `strict` mode.
 - Do not expose SSH keys, an SSH agent, `gh` state, Git credential stores, or
   GitHub tokens to an agent.
-- Preserve live, shared editing through I/Q in the main worktree.
-- Preserve direct theory editing and full ic2 checking in a dedicated
-  worktree.
+- Preserve live, shared editing through I/Q in the jEdit worktree.
+- Preserve direct theory editing and full ic2 checking in an ic2 worktree.
 - Keep raw Docker authority outside the agent jail.
 - Leave fetching private objects, reviewing changes, publishing branches, and
   opening pull requests to a trusted host-side actor.
@@ -79,7 +78,7 @@ surface. Also avoid placing assigned worktrees under `/tmp`, because every JAI
 jail has a private `/tmp`; use a persistent, explicitly granted worktree
 directory instead.
 
-## Main-worktree Isabelle/jEdit and I/Q
+## Isabelle/jEdit and I/Q in the jEdit worktree
 
 ### What I/Q protects
 
@@ -153,11 +152,11 @@ Run jEdit normally on the host with the existing launcher, and run only the
 agent inside JAI:
 
 ```bash
-formal/tooling/scripts/launch_jedit.sh \
+"$ISABELLE_TOOLING_ROOT/scripts/launch_jedit.sh" \
   --project formal \
-  --session OfferExchange \
-  --venv formal/tooling/.venv \
-  OfferExchange/Offer_Exchange_Lifecycle.thy
+  --session MyProject \
+  --venv "$ISABELLE_TOOLING_ROOT/.venv" \
+  MyProject/Theory.thy
 ```
 
 This protects Git credentials and prevents ordinary agent shell commands from
@@ -180,13 +179,20 @@ formal tree:
 cd /path/to/project/formal
 jai -mstrict -j isabelle-jedit \
   -r "$HOME/.config/isabelle-iq" \
-  tooling/scripts/launch_jedit.sh \
+  -r "$ISABELLE_TOOLING_ROOT" \
+  "$ISABELLE_TOOLING_ROOT/scripts/launch_jedit.sh" \
     --project . \
-    --session OfferExchange \
-    --venv tooling/.venv \
+    --session MyProject \
+    --venv "$ISABELLE_TOOLING_ROOT/.venv" \
     --token-file "$HOME/.config/isabelle-iq/auth-token" \
-    OfferExchange/Offer_Exchange_Lifecycle.thy
+    MyProject/Theory.thy
 ```
+
+The launcher records the jEdit it starts in the checkout's Git data, so that
+ic2 refuses that checkout while jEdit runs. A jail that hides the checkout's
+Git data, or mounts it read-only, leaves nothing recorded (the launcher warns
+in the second case), and ic2 cannot see this jEdit; the ic2-worktree marker
+described below is then the only safeguard.
 
 Install the I/Q plugin once from inside the same named jEdit jail so the plugin
 JAR is stored in that jail's persistent Isabelle user directory. GUI access is
@@ -198,41 +204,40 @@ Both placements preserve the existing human-and-agent PIDE workflow. The
 stronger placement additionally confines Isabelle/ML to the formal tree, the
 jEdit jail home, and its private temporary directory.
 
-## Dedicated-worktree ic2
+## ic2 in an ic2 worktree
 
 The ic2 worker must not receive I/Q access. It edits saved theory files
-directly in one dedicated worktree and checks them through that worktree's
-`formal/tooling/scripts/offer-exchange-ic2.sh`.
+directly in one ic2 worktree and checks them through the tooling clone's
+`scripts/ic2.sh`, run from that worktree. Before editing it runs `ic2.sh
+preflight`, which passes only in a checkout marked as an ic2 worktree that
+no running jEdit owns.
 
 ### Trusted provisioning
 
 A trusted host-side coordinator performs the operations that may need shared
 Git metadata or remote authentication:
 
-1. Inspect the main worktree and resolve the exact committed base.
-2. Create a local branch and linked worktree under an explicitly managed
-   worktree parent.
-3. Populate only `formal/AutoCorrode`.
-4. If the required submodule object is not already cached, fetch it before
-   launching the credential-free worker.
-5. Start the worktree's ic2 container, or register the worktree with the ic2
+1. Inspect the jEdit worktree and resolve the exact committed base.
+2. Create a local branch and an ic2 worktree under an explicitly managed
+   worktree parent with `ic2.sh worktree add`, which also marks it.
+3. Start the worktree's ic2 server, or register the worktree with the ic2
    broker described below.
 
 For example, outside the worker jail:
 
 ```bash
-MAIN=/path/to/project
-WT=/path/to/worktrees/offer-proof-1
-BRANCH=ic2-offer-proof-1
+JEDIT_WT=/path/to/project
+WT=/path/to/worktrees/proof-1
+BRANCH=ic2-proof-1
 
-git -C "$MAIN" worktree add -b "$BRANCH" "$WT" HEAD
-git -C "$WT" submodule update --init formal/AutoCorrode
-"$WT/formal/tooling/scripts/offer-exchange-ic2.sh" start
+cd "$JEDIT_WT" && "$ISABELLE_TOOLING_ROOT/scripts/ic2.sh" worktree add "$WT" -b "$BRANCH" HEAD
+cd "$WT" && "$ISABELLE_TOOLING_ROOT/scripts/ic2.sh" start
 ```
 
-Creating the worktree is local. The submodule command is also local when the
-recorded object is already available in the shared object store; otherwise it
-is the provisioning step that may require the host's Git credentials.
+Creating and marking the worktree are local. Worktrees need no submodule:
+the tooling and AutoCorrode live in the tooling clone. The marker is in the
+worktree's own Git data, under the common Git directory's `worktrees/`, so
+the worker below can read it but not write one.
 
 ### Worker jail
 
@@ -240,23 +245,24 @@ Give the worker read access to the whole assigned checkout and write access
 only to its `formal/` subtree. Disable I/Q explicitly:
 
 ```bash
-MAIN=/path/to/project
-WT=/path/to/worktrees/offer-proof-1
-BROKER_DIR=/run/user/1000/jai-ic2/offer-proof-1
+WT=/path/to/worktrees/proof-1
+COMMON="$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)"
+BROKER_DIR=/run/user/1000/jai-ic2/proof-1
 
-jai -D -mstrict -j ic2-offer-proof-1 \
+jai -D -mstrict -j ic2-proof-1 \
   -r "$WT" \
   -d "$WT/formal" \
-  -r "$MAIN/.git" \
+  -r "$COMMON" \
+  -r "$ISABELLE_TOOLING_ROOT" \
   -r "$BROKER_DIR" \
   codex -C "$WT" -c 'mcp_servers.iq.enabled=false'
 ```
 
-The read-only common Git directory is optional. It permits `git status`,
-`git diff`, branch inspection, and submodule inspection because a linked
-worktree's `.git` file points back into the main repository. Omit it if the
-worker does not need Git inspection and have the coordinator provide the final
-diff instead.
+The read-only common Git directory is required: a linked worktree's `.git`
+file points into it, and `ic2.sh preflight` reads the worktree's marker
+there. It also permits `git status`, `git diff` and branch inspection. In a
+`.bare` repository it is the `.bare` directory, not `PROJECT/.git`, which is
+a one-line file.
 
 Do not give the worker write access to the common `.git` directory merely to
 allow commits. Besides changing shared refs, writable Git metadata gives an
@@ -300,7 +306,7 @@ It should:
 
 - resolve every theory path beneath the assigned `formal/` directory and
   reject absolute paths, `..`, symlink escapes, and other worktrees;
-- invoke only the assigned worktree's `offer-exchange-ic2.sh`;
+- invoke only the tooling clone's `ic2.sh` for the assigned worktree;
 - return stdout, stderr, and the exit status without evaluating shell text;
 - reject raw Docker commands, arbitrary container names, arbitrary start
   options, token-file mounts, volume deletion, and interactive `check attach`;
@@ -328,7 +334,7 @@ The worker follows the existing ic2 sequence through the broker:
 5. Stop its container without deleting the heap volume.
 6. Report changed files and exact validation results.
 
-The final `isabelle build -D formal/OfferExchange` can run in a credential-free
+The final `isabelle build -D formal` can run in a credential-free
 strict jail using that jail's private Isabelle home, or it can be run by the
 trusted host-side coordinator. The coordinator then reviews the diff and may
 create a local commit. Merging, cherry-picking, pushing, or opening a pull
@@ -338,7 +344,7 @@ request remains a separate human-authorized action.
 
 | Component | Writable host state | Credential/capability |
 | --- | --- | --- |
-| Main-worktree proof agent | None directly; theory edits through I/Q | Agent-service auth and read-only I/Q token |
+| jEdit-worktree proof agent | None directly; theory edits through I/Q | Agent-service auth and read-only I/Q token |
 | Host jEdit, practical placement | I/Q mutation root under `formal/` | I/Q token; no Git credential needed |
 | Jailed jEdit, stronger placement | `formal/` and private jail home | I/Q token only |
 | ic2 worker | Assigned worktree's `formal/` | Agent-service auth and per-job broker socket |

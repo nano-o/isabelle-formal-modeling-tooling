@@ -20,7 +20,7 @@ conventions, each shown below with its effect and undo.
 ```text
 AutoCorrode/           pinned submodule (github.com/nano-o/AutoCorrode): ic2, I/Q, I/R
 scripts/common.sh      descriptor parser, checkout resolver, shared helpers
-scripts/ic2.sh         project entry point: start/stop/name/wait/health + `isabelle ic2 ...`
+scripts/ic2.sh         project entry point: start/stop/name/wait/health, preflight, worktree + `isabelle ic2 ...`
 scripts/start-ic2.sh   native `ic2 server start` wrapper (base session, heap bound)
 scripts/stop-ic2.sh    native `ic2 server stop` wrapper
 scripts/build-ic2.sh   register the ic2 component and build its JAR
@@ -297,6 +297,8 @@ and log under `$ISABELLE_HOME_USER/ic2/`. Servers share the host's read-only
 base heap; nothing is built per worktree. From anywhere inside the checkout:
 
 ```bash
+ic2.sh worktree add ../proof-1 -b proof-1    # a new linked worktree, marked as an ic2 worktree
+ic2.sh preflight                             # ok only in a marked ic2 worktree no jEdit owns
 ic2.sh start --cpus 8                        # idempotent: already running is success
 ic2.sh server status                         # without -n, `isabelle ic2 server status` lists every server
 ic2.sh check MyProject/Theory.thy --command-timeout 15
@@ -321,6 +323,15 @@ until `stop` and `start`. The wrapper's own liveness check — a Poly/ML
 descendant of the server pid — is a fallback that is inconclusive from a
 shell in a private PID namespace and says nothing then.
 
+ic2 workers edit theories on disk, so they work only in an ic2 worktree,
+never beside the human's jEdit. The role is recorded in the checkout's
+per-worktree Git data, never inferred from Git's layout, which in a `.bare`
+repository makes every checkout a linked worktree: `worktree add` marks the
+worktree it creates, `worktree mark` marks an existing one, and `worktree
+unmark` removes the mark. `preflight` passes only in a marked checkout that
+no running jEdit owns; `start` and `check FILE...` refuse while a jEdit owns
+the checkout.
+
 Final validation of a session, including its document, stays the host command
 `isabelle build -D <formal root>`.
 
@@ -331,7 +342,11 @@ scripts/launch_jedit.sh --project <formal root> --session MyProject --venv <clon
 ```
 
 The launcher accepts `--read-root DIR` for directories I/Q may read outside
-the project. Agents reach the live PIDE document through the I/Q MCP bridge,
+the project. It refuses while the checkout's ic2 server runs, and records the
+jEdit it starts in the checkout's Git data, so ic2 refuses that checkout until
+the jEdit exits. To inspect a finished ic2 worktree, launch jEdit there once
+its server has stopped. A plain `isabelle jedit` records nothing. Agents
+reach the live PIDE document through the I/Q MCP bridge,
 `AutoCorrode/iq/iq_bridge.py`, launched from this clone.
 
 ## Several agents on one repository
@@ -345,7 +360,7 @@ the checkout is configured and `agent-board` resolves
 (`AGENT_BOARD_COMMAND`, else `PATH`),
 `ic2.sh start` and `stop` post a note as `ic2`, waiting at most five
 seconds for the board. The proof resources agents claim are theory files,
-proof branches and `token:jedit`, the human's I/Q session in the main
+proof branches and `token:jedit`, the human's I/Q session in the jEdit
 worktree. A delegation brief's first line makes the proof worker
 independent (`Mode: independent. Handle: HANDLE.`) or supervised (`Mode:
 supervised by HANDLE.`); both worker profiles describe the two modes.

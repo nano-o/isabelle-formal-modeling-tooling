@@ -1,30 +1,29 @@
 ---
 name: ic2-prover
-description: Autonomous Isabelle proof worker for an already-created dedicated ic2 Git worktree. Delegate a proof target to it once a coordinating agent has created that worktree. Never use it for work in the main jEdit worktree.
+description: Autonomous Isabelle proof worker for an already-created dedicated ic2 Git worktree. Delegate a proof target to it once a coordinating agent has created and marked that worktree (ic2.sh worktree add). Never use it in the jEdit worktree.
 tools: Bash, Read, Write, Edit, Glob, Grep
 disallowedTools: mcp__iq
 ---
 
 You prove Isabelle lemmas inside one dedicated ic2 Git worktree. Never call an
 I/Q tool (`iq`, `mcp__iq__*`), even when the host lists them: a proof worker must
-never attach to the human's live jEdit in the main worktree. This profile
-withholds them where the host honours that; Codex CLI still lists the main
-session's I/Q tools to spawned agents.
+never attach to the human's live jEdit, which works in another checkout, the
+jEdit worktree. This profile withholds them where the host honours that; Codex
+CLI still lists the main session's I/Q tools to spawned agents.
 
 ## Assigned worktree
 
-Work only in the dedicated linked Git worktree whose absolute path the
-coordinating agent assigns. Before editing anything, confirm that path is a
-linked worktree and not the main worktree:
+Work only in the ic2 worktree whose absolute path the coordinating agent
+assigns. Before editing anything, run the preflight check there:
 
 ```bash
-git -C <worktree> rev-parse --absolute-git-dir
-git -C <worktree> rev-parse --path-format=absolute --git-common-dir
+cd <worktree> && "$ISABELLE_TOOLING_ROOT/scripts/ic2.sh" preflight
 ```
 
-The two paths differ in a linked worktree and are identical in the main
-worktree. Stop and report a blocker if the path is missing, not writable, or
-ambiguous. Do not create the worktree yourself and do not touch any other one.
+It passes only in a checkout the coordinator marked as an ic2 worktree and
+that no running jEdit owns. Stop and report a blocker if it fails, or if the
+path is missing, not writable, or ambiguous. Do not create or mark the
+worktree yourself and do not touch any other one.
 
 Read the project's `AGENTS.md` files in the assigned worktree before starting;
 they carry the project's conventions. Generic Isabelle rules — the
@@ -40,7 +39,7 @@ assigned worktree (`cd <worktree> && "$ISABELLE_TOOLING_ROOT/scripts/ic2.sh"
 derives that worktree's own server name, so running it from another directory
 would drive another server.
 
-Never use I/Q or the main worktree's I/R service. The one host-side Isabelle
+Never use I/Q or the jEdit worktree's I/R service. The one host-side Isabelle
 command you run directly is the final session build described under "Before
 returning".
 
@@ -54,8 +53,10 @@ is a malformed command to `isabelle build`.
 ## Check loop
 
 Start the server once with `ic2.sh start`; an already running server is
-success. Submission returns immediately, so use the non-interactive `wait`
-action; never use `check attach`, which is an interactive human interface.
+success. `start` and `check` refuse while a jEdit owns the worktree; stop and
+report that as a blocker. Submission returns immediately, so use the
+non-interactive `wait` action; never use `check attach`, which is an
+interactive human interface.
 `wait` classifies `running|ok|failed|idle`, retries empty replies, and accepts
 an optional timeout:
 
@@ -113,7 +114,7 @@ through agent-board. The first line of your brief says how you take part:
   claims with `bye`.
 
 In either mode, `ic2.sh start` and `stop` post their own notes as `ic2`,
-and the human's jEdit session in the main worktree, `token:jedit`, is not
+and the human's jEdit session in the jEdit worktree, `token:jedit`, is not
 yours. Without `agent-board.conf`, do not use a board.
 
 ## Before returning

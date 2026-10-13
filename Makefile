@@ -5,6 +5,7 @@ TEST_FILES := \
 	tests/common_test.sh \
 	tests/descriptor_test.sh \
 	tests/ic2_test.sh \
+	tests/launch_jedit_test.sh \
 	tests/new_project_test.sh \
 	tests/start_ic2_test.sh \
 	tests/model_runner_test.sh \

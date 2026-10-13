@@ -55,6 +55,29 @@ checkout root, found by `--project-root` or by walking up from the current
 directory, and the tooling clone from its own location. See the README for
 the descriptor format and the naming rule.
 
+## Checkout roles
+
+A checkout is either the jEdit worktree, where a human's jEdit owns the
+theory buffers and agents edit through I/Q, or an ic2 worktree, where
+workers edit theories on disk. The role is recorded, never inferred from
+Git's layout: in a `.bare` repository every checkout, the jEdit worktree
+included, is a linked worktree. Two files under `git rev-parse --git-path
+isabelle-tooling/`, per-worktree Git data that is never committed, carry
+it:
+
+- `ic2-worktree`, written by `ic2.sh worktree add` and `worktree mark`;
+- `jedit`, written by `launch_jedit.sh` with jEdit's pid and I/Q write
+  root. jEdit inherits an exclusive lock on it across the launcher's final
+  `exec`, so the record is live exactly while that jEdit runs, whatever
+  PID namespace reads it.
+
+`ic2.sh preflight` passes only in a marked checkout that no live jEdit
+owns, and `start` and `check` refuse beside a live jEdit. The launcher
+refuses while the checkout's ic2 server runs, so a finished ic2 worktree
+can be opened in jEdit once its server has stopped. A plain `isabelle
+jedit` records nothing; the marker is the safeguard and the record a
+backstop.
+
 ## Delivery to projects
 
 A project receives the tooling's instructions and configuration as

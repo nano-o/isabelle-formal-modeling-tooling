@@ -1,11 +1,11 @@
 # Contracts: project delivery for the Isabelle tooling and agent-board
 
-Step 1 of [the delivery plan](new-project-delivery-plan.md), drafted and
-design-reviewed on 2026-09-28 (the plan's History has the review). The plan
-says what is built and why; this document fixes the interfaces that the two
-installers, the two doctors, the Isabelle adapter and the fixtures must
-agree on. Where the two disagree, this document wins and the plan is
-corrected. Step 2 copies the shared rules and the agent-board part into
+Step 1 of the delivery plan, drafted and design-reviewed on 2026-09-28. The
+plan, finished on 2026-09-29 and removed on 2026-10-12, is in Git history
+with its History and the review. This document fixes the interfaces that
+the two installers, the two doctors, the Isabelle adapter and the
+[fixtures](validation.md#fixtures) must agree on. Step 2 copies the shared
+rules and the agent-board part into
 `docs/project-integration.md` in the new board repository, which then owns
 them; each repository keeps its own copy of the shared rules, and a change
 to them is made in both.
@@ -299,9 +299,16 @@ for tool notes; a change to those is made there first.
 ## Isabelle tooling
 
 **Entry point.** `bin/isabelle-tooling` in the tooling repository, with
-`skills list`, `skills show NAME`, and the project verbs. Its skill
-inspection follows the plan's "Instruction revision selection". It needs
-Python 3.11 or later for `tomllib`.
+`skills list`, `skills show NAME`, and the project verbs. It needs Python
+3.11 or later for `tomllib`.
+
+**Instruction revision selection.** Inside a project, `skills list` and
+`skills show` read the Git object named by the descriptor's
+`tooling_revision`, as `sync` does, never a newer tool on `PATH`, the working
+tree or a linked skill. Outside a project they read `stable` and report the
+commit it resolves to. A malformed descriptor or a missing pinned object is
+an error, not a reason to fall back. Reading needs no prover, host plugin or
+network, and does not show that the runtime matches; that is doctor's job.
 
 **Manifest.** `extension/project/manifest.json` at each revision lists what
 that revision installs: the skill names, the wholly managed files with
@@ -498,7 +505,7 @@ repositories' copies of the shared rules.
 
 For the Isabelle tooling only:
 
-- The synchronizer the plan calls `scripts/sync-extension.sh` is
+- The synchronizer the plan called `scripts/sync-extension.sh` is
   `scripts/isabelle_tooling.py` with the shared `project_files.py`;
   `bin/isabelle-tooling` sends `doctor` to `doctor.sh` and the rest there.
 - `new-project.sh` takes `--revision COMMIT --stage DIR` and renders into an

@@ -8,7 +8,8 @@ skill. Projects are disposable, with isolated Git and host configuration.
 `before-kinds`, off `stable`, has the manifest and templates of a revision
 from before project kinds. The rules shared with agent-board
 (scripts/project_files.py) are tested in depth there; these tests cover what
-the Isabelle tooling adds and the plan's installer cases.
+the Isabelle tooling adds and the installer cases of the fixtures in
+docs/validation.md.
 """
 import hashlib
 import json

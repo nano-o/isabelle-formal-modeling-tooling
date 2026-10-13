@@ -1,10 +1,98 @@
 # Validation records
 
 `stable` names the commit that appended the newest entry below. Each entry
-is a validation record commit: the commit at which the new-project fixtures
-of [new-project-delivery-plan.md](new-project-delivery-plan.md) passed, plus
-the entry itself. The mechanical checks are rerun at exactly that commit
-before `stable` moves to it. The plan's History has the details of each run.
+is a validation record commit: the commit at which the fixtures below
+passed, plus the entry itself. The mechanical checks are rerun at exactly
+that commit before `stable` moves to it. Entries up to 2026-10-08 refer to
+the History of the delivery plan or the theory projects plan for the
+details of each run; both plans were removed on 2026-10-12 and are in Git
+history.
+
+## Fixtures
+
+Moved verbatim from the delivery plan on 2026-10-12.
+
+The acceptance fixtures are new projects: a bare `git init` repository and a
+small existing codebase other than stellar-core. Run board alone, Isabelle
+alone, and both in each installation order, separately on Claude Code and
+Codex CLI, with isolated host configuration roots, starting sessions both at
+the repository root and in a subdirectory. Board-only runs have no Isabelle
+descriptor, installation or `ISABELLE_TOOLING_ROOT`; Isabelle-only runs have
+no board executable. Combined runs also cover independent pin mismatches and
+`remove` of one component while keeping the other. Record both source
+revisions, the CLI compatibility version, host versions and outcomes. Run
+Codex fixtures at medium reasoning effort, in the background, with stdin
+closed.
+
+With Isabelle, confirm skill, agent and I/Q discovery (Codex's upward scan
+is documented; Claude Code's root `.mcp.json` and symlinked skill aliases
+from a subdirectory start need proving); `link`, make one unmistakable skill
+edit, start a fresh session and observe it with no reinstall; connect
+through I/Q; delegate one smoke proof to the worker; `copy` and confirm the
+tree is clean.
+
+Exercise the command interface: `skills show` emits exactly the selected
+Git object's bytes, with no provenance on stdout; `skills list` reports the
+same revision; inspection works without a prover or network. Cover the
+project pin when the tooling checkout has a different `HEAD` or uncommitted
+skill edits, inspection outside a project (reads `stable`), unknown skill
+names, malformed descriptors and missing pinned objects. Check that `init`
+installs the complete integration at `stable`, `sync` preserves the pin, and
+only `update` changes it. Include a skill with a supporting reference file,
+to show that installation preserves the directory and not just `SKILL.md`.
+
+Installer tests cover unrelated MCP servers, TOML content outside the
+managed block, unmanaged collisions, edited owned entries, blocks and files,
+obsolete entries, missing pinned commits, runtime mismatch, a pre-existing
+root `AGENTS.md`, `CLAUDE.md` as a symlink and as a regular file, refusal
+with unstaged or untracked managed paths, two installers started at once,
+destinations on another filesystem than the temporary directory, and an
+injected failure after each publication step, including during Isabelle
+`init`'s session scaffold: the printed commands restore the tree, `check`
+and doctor fail until they do, and a retry then succeeds. Adoption runs
+`update` against a snapshot of the offer-exchange checkout (a linked
+worktree at its current commit), with its own `.claude/skills/`, root
+`AGENTS.md` and `CLAUDE.md` symlink. Both doctors are checked to be
+read-only: `git status` and a file listing of the project and the runtime
+checkouts are the same before and after.
+
+For the board, run the original shell tests and behavioural regressions,
+renamed with the code, before changing behaviour. Delete the three
+regressions that exercise `migrate` together with it, and rewrite the one
+that uses the bare `jedit` shorthand for `token:jedit`; the remaining 28
+must pass unchanged. Add coverage for executable resolution, shared state
+and lock identity across linked worktrees, both Git guards under real Git
+operations, foreign-hook chaining, a commit in another worktree with an
+explicit handle, a guard whose recorded executable no longer matches, a
+failure between the two guard writes, a `core.hooksPath` outside the Git
+directory, the incomplete-state cases, and the ic2 notifier returning
+within its timeout while another process holds the board lock. Verify
+exactly one digest route and one coordination skill in fresh host sessions,
+using the explicit digest workflow on Codex.
+
+In fresh sessions started at the root and in a subdirectory, list the
+worker profiles and tools each host offers, and have the proof worker
+attempt an I/Q call, which must be unavailable to it. Exactly one worker
+definition and one main-session `iq` server may be visible, so that a
+passing smoke proof cannot hide a user-level or plugin duplicate.
+
+Behavioural scenarios, on both hosts: an ordinary editing task that does
+not mention the board, where the agent should consult the skill and board
+and claim before editing; the same after compaction or resume; an
+independent delegated worker without inherited context; a supervised worker
+with only its brief, where the coordinator claims first and keeps ownership
+until the worker stops, the worker stays in scope with no board or Git
+operations, and the coordinator commits without bypassing guards; several
+supervised workers with disjoint assignments; a scope-expansion request; a
+missed check-in or unavailable coordinator; an explicit transfer to
+independent mode; and a check that the exception does not suppress ordinary
+coordination. These depend on model behaviour, so treat them as recorded
+observations rather than pass/fail gates: run each at least three times per
+host, record every outcome and how compaction or resume was triggered, and
+fix any protocol violation in the skill, instruction block or worker profile
+before moving `stable`. After failure injection, recheck board and host
+session state; a passing file-copy check is not enough.
+
 
 ## 2026-09-29: the first `stable`
 

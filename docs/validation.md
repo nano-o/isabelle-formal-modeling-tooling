@@ -500,3 +500,50 @@ Observations
   (agent-board, not this repository).
 : The three Claude Code sessions cost $1.20; on Codex they read 0.89M
   input tokens, 93% of them cached, and wrote 3.7k.
+
+
+## 2026-10-29: AutoCorrode upstream rebase
+
+Candidates
+: isabelle-formal-modeling-tooling `7737383`, this commit's parent:
+  the AutoCorrode pin update merged with the shared-session evaluation
+  document already on the local runtime's `stable` branch.
+: AutoCorrode `9c06706`, rebased onto upstream `200f1ac`. The ic2
+  prover-death patch (`7318f71`) and I/Q bridge authentication patch
+  (`9c06706`) are unchanged according to `git range-diff`. The upstream
+  changes include I/R export decoding without the 50 MiB cap, plugin
+  build-path normalization, and optional fine-grained proof timing.
+: agent-board `b215a93`, interface 1 and state format 2, unchanged.
+
+Environment
+: Isabelle2025-2, Git 2.43.0, Python 3.12.3, on Linux. The candidate
+  runtime, Isabelle user home, host configuration directories, token and
+  scratch projects were isolated from the live runtime. The jEdit smoke
+  test ran under Xvfb and closed only its own processes.
+
+Passed
+: `make validate` and `make check-isabelle` at this record commit:
+  installer and shell tests, rendered profiles, export-check fixtures,
+  the model runner, and both project-template kinds including FSet.
+: A fresh ic2 build and `isabelle ic2_test all`: 50 passed, including
+  prover-death detection, cancellation, timeouts, REPLs and daemon lifecycle.
+: I/Q plugin build and Scala regression suites, its 15 Python bridge
+  tests, and all 26 Python tests under AutoCorrode's `ip` directory.
+: A real jEdit with the rebuilt plugin: the bridge authenticated without
+  a client token argument, hid the authentication tool, listed the opened
+  fixture theory, and authenticated again after reconnect. The ic2 wrapper
+  refused to start in the checkout owned by that jEdit.
+: The mechanical new-project fixtures at this record commit, on a fresh
+  bare repository and a stellar-core clone: board alone, Isabelle alone,
+  both installation orders, independent pin mismatches, removal of either
+  integration, pinned skill inspection and read-only doctors. The isolated
+  runtime's `stable` ref named this record while testing default installs.
+
+Not rerun
+: Agent-host discovery and behavioural scenarios, delegated-worker smoke
+  proofs and link-mode host runs. The installed project files, skills,
+  worker profiles and coordination adapter have not changed. The actual
+  I/Q connection was exercised directly against jEdit instead.
+: Full AutoCorrode theory-library sessions: this release validates the
+  host tooling's ic2, I/Q and I/R paths, not the Rust and separation-logic
+  libraries.

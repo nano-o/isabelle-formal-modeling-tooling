@@ -2,8 +2,8 @@
 """The Isabelle tooling's command interface: skill inspection and project files.
 
 bin/isabelle-tooling is the entry point; it sends `doctor` to doctor.sh and
-everything else here. The installer rules shared with agent-board live in
-project_files.py, an identical copy of agent-board's src/project_files.py.
+everything else here. The installer in project_files.py uses the same
+delivery rules as agent-board, with hooks for selecting an Isabelle workflow.
 """
 import argparse
 import os
@@ -27,6 +27,7 @@ REQUIRED_KEYS = ('format_version', 'source_rel', 'formal_rel', 'build_session', 
 OPTIONAL_KEYS = ('tooling_revision', 'ic2_max_heap', 'export_name', 'model_dispatch', 'audit_collection',
                  'model_kind')
 KINDS = ('code', 'theory')
+ISABELLE_VERSIONS = ('Isabelle2025-2', 'Isabelle2026')
 PATH_KEYS = ('source_rel', 'formal_rel', 'session_dir', 'model_dispatch')
 
 
@@ -73,6 +74,11 @@ class ToolingSpec:
         """Absent means code; only a descriptor that names its kind needs a revision with kinds."""
         return values.get('model_kind')
 
+    def manifest_for(self, values):
+        if values.get('isabelle_version') == 'Isabelle2026':
+            return 'extension/project/manifest-pide-ai.json'
+        return self.manifest
+
 
 # --- skills list and show ----------------------------------------------------------------------
 
@@ -95,23 +101,24 @@ def skill_revision(spec, project_root):
     else:
         descriptor = nearest_descriptor(os.getcwd())
     if descriptor is None:
-        return spec.runtime.commit('stable'), 'stable', None
+        return spec.runtime.commit('stable'), 'stable', {}
     values = parse_descriptor(descriptor.read_bytes().decode('utf-8'), str(descriptor))
     revision = values.get('tooling_revision', '')
     if not project_files.FULL_REVISION.fullmatch(revision):
         raise Refused(f'{descriptor}: tooling_revision must be a full 40-hex commit, found {revision!r}')
     if not spec.runtime.has(revision):
         raise Broken(f'the pinned commit {revision} is missing from {spec.runtime.path}')
-    return revision, f'pinned by {descriptor}', values.get('model_kind', 'code')
+    return revision, f'pinned by {descriptor}', values
 
 
-def manifest_skills(spec, revision):
+def manifest_skills(spec, revision, values):
     """The supported kinds (empty before kinds), and (name, source, kinds) per skill; kinds None means all."""
     import json
+    manifest_path = spec.manifest_for(values)
     try:
-        manifest = json.loads(spec.runtime.blob(revision, spec.manifest))
+        manifest = json.loads(spec.runtime.blob(revision, manifest_path))
     except Broken:
-        raise Broken(f'{revision} has no {spec.manifest}') from None
+        raise Broken(f'{revision} has no {manifest_path}') from None
     return manifest.get('kinds', []), [(s['name'], s['source'], s.get('kinds')) for s in manifest.get('skills', [])]
 
 
@@ -127,8 +134,9 @@ def description(text):
 
 
 def skills(args, spec):
-    revision, where, kind = skill_revision(spec, args.project_root)
-    supported, available = manifest_skills(spec, revision)
+    revision, where, values = skill_revision(spec, args.project_root)
+    kind = values.get('model_kind', 'code') if values else None
+    supported, available = manifest_skills(spec, revision, values)
     if args.skills_action == 'list':
         # Each skill's kinds, once the revision has kinds; in a project, the skills its kind leaves out.
         here = kind is not None and kind in supported
@@ -161,7 +169,7 @@ def scaffold(revision, args, root):
         command = [str(TOOLING_ROOT / 'scripts/new-project.sh'), '--revision', revision, '--stage', stage,
                    '--session', args.session, '--project-name', args.project_name or root.name,
                    '--formal-rel', args.formal_rel, '--source-rel', args.source_rel, '--max-heap', args.max_heap,
-                   '--kind', args.kind]
+                   '--kind', args.kind, '--isabelle-version', args.isabelle_version]
         result = subprocess.run(command, capture_output=True, text=True)
         if result.returncode:
             raise Broken(result.stderr.strip().removeprefix('ERROR: ') or 'new-project.sh failed')
@@ -195,7 +203,8 @@ def project(args, spec):
             raise Broken('--source goes with sync --link')
         return project_files.sync(root, spec, args.link, args.source)
     if action == 'update':
-        return project_files.update(root, spec, args.revision)
+        changes = [('isabelle_version', args.isabelle_version)] if args.isabelle_version else ()
+        return project_files.update(root, spec, args.revision, descriptor_changes=changes)
     out = project_files.remove(root, spec)
     return out + ('The Isabelle session, and the instruction files outside the managed blocks, stay; '
                   'they belong to the project.\n')
@@ -217,6 +226,8 @@ def parser():
                        'pinned at --revision (default stable)')
     q.add_argument('--session', required=True, help='Isabelle session name; also its directory')
     q.add_argument('--revision', default='stable')
+    q.add_argument('--isabelle-version', choices=ISABELLE_VERSIONS, default=ISABELLE_VERSIONS[0],
+                   help='Select the project workflow (Isabelle2026 enables PIDE AI)')
     q.add_argument('--formal-rel', default='formal', help='formal artifacts, relative to the checkout (formal)')
     q.add_argument('--source-rel', default='.', help='code under study, relative to the checkout (.)')
     q.add_argument('--project-name', help='name used in generated text (default: the checkout directory name)')
@@ -231,6 +242,8 @@ def parser():
     q.add_argument('--allow-dirty', action='store_true', help='with --check: link mode is a note, not a failure')
     q = sub.add_parser('update', parents=[common], help='Pin REV (a commit, or stable) and install its files')
     q.add_argument('revision', metavar='REV')
+    q.add_argument('--isabelle-version', choices=ISABELLE_VERSIONS,
+                   help='Opt in to a different Isabelle release as part of the update')
     sub.add_parser('remove', parents=[common], help='Remove the unchanged project files, the inventory and '
                    'the descriptor; the session stays')
     return p

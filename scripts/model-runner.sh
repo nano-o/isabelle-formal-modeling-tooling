@@ -89,7 +89,7 @@ case "$MODE" in
 esac
 
 resolve_project "$requested_root"
-require_isabelle
+require_project_isabelle
 
 SESSION="${PROJECT_CONF[build_session]}"
 SESSION_PATH="$PROJECT_FORMAL_ROOT/${PROJECT_CONF[session_dir]}"

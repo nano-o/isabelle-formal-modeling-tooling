@@ -214,14 +214,15 @@ class Desired:
 
 def desired_state(spec, revision, values, mode='copy', link_source=None, shared=False):
     runtime = spec.runtime
+    manifest_path = spec.manifest_for(values) if hasattr(spec, 'manifest_for') else spec.manifest
     try:
-        manifest = json.loads(runtime.blob(revision, spec.manifest))
+        manifest = json.loads(runtime.blob(revision, manifest_path))
     except Broken:
-        raise Broken(f'{revision} has no {spec.manifest}; that revision cannot be installed') from None
+        raise Broken(f'{revision} has no {manifest_path}; that revision cannot be installed') from None
     except ValueError as exc:
-        raise Broken(f'{spec.manifest} at {revision} is not valid JSON: {exc}') from None
+        raise Broken(f'{manifest_path} at {revision} is not valid JSON: {exc}') from None
     if not isinstance(manifest, dict) or manifest.get('format') != FORMAT or manifest.get('component') != spec.name:
-        raise Broken(f'{spec.manifest} at {revision} is not a format-{FORMAT} {spec.name} manifest')
+        raise Broken(f'{manifest_path} at {revision} is not a format-{FORMAT} {spec.name} manifest')
     kind = project_kind(spec, revision, values, manifest)
     substitutions = spec.substitutions(values)
     desired = Desired(revision, mode, link_source, shared)
@@ -1137,7 +1138,7 @@ def sync(root, spec, link=False, source=None):
         return execute(tree, spec, 'sync', plan, exempt, link_mode=link)
 
 
-def update(root, spec, target):
+def update(root, spec, target, *, descriptor_changes=()):
     tree = Tree(root)
     with installer_lock(tree.root):
         text, _ = read_descriptor(tree, spec)
@@ -1146,6 +1147,8 @@ def update(root, spec, target):
             raise Refused(f'{spec.command} update: the skills are in link mode; run `{spec.command} sync` first')
         revision = spec.runtime.commit(target)
         text = set_key(text, spec.revision_key, revision)
+        for key, value in descriptor_changes:
+            text = set_key(text, key, value)
         values = spec.read_descriptor(text)
         shared = inventory.get('claude_skills') == 'shared' if inventory else claude_shared(tree)
         desired = desired_state(spec, revision, values, shared=shared)

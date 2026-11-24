@@ -314,6 +314,35 @@ require_isabelle() {
     die "Isabelle not found: put its bin/ on PATH or set ISABELLE_TOOLING_ISABELLE"
 }
 
+# Keep the existing PATH-first lookup for legacy projects. A host with both
+# releases can name 2026 independently, without changing its normal PATH.
+find_isabelle2026() {
+  local candidate="${ISABELLE_TOOLING_ISABELLE2026:-}"
+  if [[ -z "$candidate" ]]; then
+    candidate="$(find_isabelle)" || return 1
+  fi
+  [[ ! -d "$candidate" ]] || candidate="$candidate/bin/isabelle"
+  [[ -x "$candidate" ]] || return 1
+  readlink -f -- "$candidate"
+}
+
+require_isabelle2026() {
+  ISABELLE_CMD="$(find_isabelle2026)" ||
+    die "Isabelle2026 not found. Set ISABELLE_TOOLING_ISABELLE2026 to its installation directory or executable."
+  local version
+  version="$("$ISABELLE_CMD" version)" || die "Cannot run Isabelle at $ISABELLE_CMD"
+  [[ "$version" == Isabelle2026 ]] ||
+    die "Expected Isabelle2026, found $version at $ISABELLE_CMD. Set ISABELLE_TOOLING_ISABELLE2026."
+}
+
+require_project_isabelle() {
+  if [[ "${PROJECT_CONF[isabelle_version]}" == Isabelle2026 ]]; then
+    require_isabelle2026
+  else
+    require_isabelle
+  fi
+}
+
 # heap_to_megabytes VALUE: parse a human-readable heap bound (12G, 512M,
 # 12288) to a plain number of megabytes.
 heap_to_megabytes() {

@@ -66,6 +66,8 @@ fi
 
 require_command openssl
 resolve_project "$requested_root"
+[[ "${PROJECT_CONF[isabelle_version]}" != Isabelle2026 ]] ||
+  die "This Isabelle2026 project uses the isabelle-pide-mcp server. ic2 requires Isabelle2025-2."
 SESSION_DIR="$PROJECT_FORMAL_ROOT"
 SESSION="${PROJECT_CONF[ic2_base_session]}"
 SERVER_NAME="$(derive_server_name "$PROJECT_CHECKOUT_ROOT")"

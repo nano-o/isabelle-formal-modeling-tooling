@@ -139,6 +139,12 @@ done
 [[ -d "$PROJECT_DIR" ]] || die "project directory does not exist: $PROJECT_DIR"
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
 
+if checkout="$(find_checkout_root "$PROJECT_DIR")" &&
+  (parse_descriptor "$checkout/$DESCRIPTOR_FILE_NAME" &&
+   [[ "${PROJECT_CONF[isabelle_version]}" == Isabelle2026 ]]) 2>/dev/null; then
+  die "This launcher requires I/Q on Isabelle2025-2. For this PIDE AI project, open Isabelle2026 jEdit directly."
+fi
+
 if [[ -z "$AUTOCORRODE_ROOT" ]]; then
   candidate="$TOOLING_ROOT/AutoCorrode"
   if [[ -f "$candidate/ir/repl.py" && -d "$candidate/iq" ]]; then

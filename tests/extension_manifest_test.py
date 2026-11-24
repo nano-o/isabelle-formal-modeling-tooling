@@ -21,18 +21,20 @@ def load(relative_path: str) -> dict[str, object]:
     return payload
 
 
-# The project manifest installs every shipped skill and names only files
-# that exist at this revision.
+# The two workflow manifests cover every shipped skill and name files that
+# exist at this revision.
 project = load("extension/project/manifest.json")
+pide = load("extension/project/manifest-pide-ai.json")
 assert project["component"] == "isabelle-tooling" and project["format"] == 1
-installed = sorted(s["name"] for s in project["skills"])
+installed = sorted({s["name"] for manifest in (project, pide) for s in manifest["skills"]})
 shipped = sorted(p.name for p in (REPO_ROOT / "extension/skills").iterdir() if (p / "SKILL.md").is_file())
 assert installed == shipped, (installed, shipped)
-for skill in project["skills"]:
-    assert (REPO_ROOT / skill["source"] / "SKILL.md").is_file()
-for item in project["files"] + project["json_entries"] + project["toml_blocks"]:
-    assert (REPO_ROOT / item["source"]).is_file(), item
-assert (REPO_ROOT / project["markdown_block"]).is_file()
+for manifest in (project, pide):
+    for skill in manifest["skills"]:
+        assert (REPO_ROOT / skill["source"] / "SKILL.md").is_file()
+    for item in manifest.get("files", []) + manifest["json_entries"] + manifest["toml_blocks"]:
+        assert (REPO_ROOT / item["source"]).is_file(), item
+    assert (REPO_ROOT / manifest["markdown_block"]).is_file()
 
 # Project kinds: a theory project gets setup and proving, and only the
 # three skills of the code-level method are for code projects alone.

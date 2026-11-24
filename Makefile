@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-SCRIPT_FILES := $(wildcard scripts/*.sh) extension/bin/iq-bridge.sh bin/isabelle-tooling
+SCRIPT_FILES := $(wildcard scripts/*.sh extension/bin/*.sh) bin/isabelle-tooling
 TEST_FILES := \
 	tests/common_test.sh \
 	tests/descriptor_test.sh \

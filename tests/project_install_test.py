@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import tomllib
 import unittest
 
 SOURCE = Path(__file__).resolve().parents[1]
@@ -276,6 +277,35 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('full 40-hex commit', self.it('skills', 'show', 'isabelle-setup', code=1).err)
 
     # --- shared files ------------------------------------------------------------------------
+
+    def test_isabelle2026_opt_in_and_rollback_preserve_project_files(self):
+        self.it('init', '--session', 'Demo', '--kind', 'theory', '--isabelle-version', 'Isabelle2026')
+        self.assertIn('isabelle_version=Isabelle2026\n', self.read('isabelle-tooling.conf'))
+        self.assertEqual(set(json.loads(self.read('.mcp.json'))['mcpServers']), {'isabelle-pide-mcp'})
+        self.assertEqual(set(tomllib.loads(self.read('.codex/config.toml'))['mcp_servers']), {'isabelle-pide-mcp'})
+        self.assertEqual(self.skill_dirs(), (('isabelle-pide-ai',), ('isabelle-pide-ai',)))
+        self.assertFalse((self.project / '.codex/agents/ic2_prover.toml').exists())
+        self.assertIn('isabelle-pide-ai', self.it('skills', 'list').out)
+        self.assertIn('isabelle-pide-mcp', self.read('AGENTS.md'))
+        original_theory = self.read('formal/Demo/Demo.thy')
+        self.it('sync')
+        self.check()
+        report = self.doctor(env=dict(self.env, MOCK_ISABELLE_VERSION='Isabelle2026'))
+        self.assertIn('setup-pide-ai.sh', report)
+        self.assertNotIn('I/Q token', report)
+        self.assertNotIn('ic2 component', report)
+        self.commit_all()
+        self.it('update', 'stable', '--isabelle-version', 'Isabelle2025-2')
+        self.assertEqual(set(json.loads(self.read('.mcp.json'))['mcpServers']), {'iq'})
+        self.assertEqual(self.skill_dirs(), (THEORY_SKILLS, THEORY_SKILLS))
+        self.assertEqual(self.read('formal/Demo/Demo.thy'), original_theory)
+        self.commit_all()
+        self.it('update', 'stable', '--isabelle-version', 'Isabelle2026')
+        self.check()
+        self.commit_all()
+        self.it('remove')
+        self.assertFalse((self.project / '.mcp.json').exists())
+        self.assertEqual(self.read('formal/Demo/Demo.thy'), original_theory)
 
     def test_mcp_and_codex_configuration_are_merged_and_restored(self):
         mcp = {'mcpServers': {'other': {'command': 'other-server'}}, 'extra': [1, 2]}

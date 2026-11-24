@@ -8,6 +8,7 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$(cd "$TEST_DIR/../.." && pwd -P)"
 OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/isabelle-template-build-test.XXXXXX")"
 HEAPS="$(isabelle getenv -b ISABELLE_HEAPS)"
+ISABELLE_VERSION="$(isabelle version)"
 SESSIONS=(Template_Build_Code Template_Build_Theory)
 # The builds leave only their logs in the user's heap directory; remove them.
 cleanup() {
@@ -41,7 +42,7 @@ build() {
   local kind="$1" session="$2" stage="$OUT_DIR/$1"
   mkdir "$stage"
   "$runtime/scripts/new-project.sh" --revision "$revision" --stage "$stage" --session "$session" \
-    --project-name "the $kind template" --kind "$kind"
+    --project-name "the $kind template" --kind "$kind" --isabelle-version "$ISABELLE_VERSION"
   isabelle build -D "$stage/formal" >"$OUT_DIR/$kind.log" 2>&1 ||
     { tail -40 "$OUT_DIR/$kind.log" >&2; fail "$kind: the rendered session does not build"; }
   echo "template_build_test: $kind ok"

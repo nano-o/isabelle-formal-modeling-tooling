@@ -3,6 +3,8 @@ set -uo pipefail
 
 # shellcheck source=common.sh disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/common.sh"
+# shellcheck source=pide-ai-common.sh disable=SC1091
+source "$TOOLING_ROOT/scripts/pide-ai-common.sh"
 
 # Doctor only reads: no bytecode caches, no index refreshes, no scratch files.
 export PYTHONDONTWRITEBYTECODE=1 GIT_OPTIONAL_LOCKS=0
@@ -16,12 +18,10 @@ usage() {
   cat <<'EOF'
 Usage: doctor.sh [--project-root DIR] [--allow-dirty]
 
-Check the project's descriptor and project files, ISABELLE_TOOLING_ROOT, the
-host Isabelle, the tooling clone and its pinned AutoCorrode submodule, the host
-configuration of both agent hosts, the single ic2 component registration and
-its JAR, the I/Q plugin and token, the I/R virtual environment, and, when the
-project has agent-board.conf, the coordination board. Reports what it found
-and prints remediation commands; it never runs them, and it writes nothing.
+Check the project's descriptor and project files, the tooling clone, the host
+Isabelle and agent configuration, the prover tooling for the project's release,
+and agent-board when configured. Prints remediation commands without running
+them or writing files.
 
   --project-root DIR  Checkout to diagnose (default: nearest descriptor above $PWD)
   --allow-dirty       Pass with a modified tooling clone or submodule, or skills
@@ -59,6 +59,8 @@ if resolve_error="$( (resolve_project "$requested_root") 2>&1 >/dev/null)"; then
     problem "Formal root has no ROOT or ROOTS: $PROJECT_FORMAL_ROOT"
   elif [[ ! -d "$session_dir" ]]; then
     problem "session_dir does not exist: $session_dir"
+  elif [[ "${PROJECT_CONF[isabelle_version]}" == Isabelle2026 ]]; then
+    ok "PIDE AI session ${PROJECT_CONF[build_session]} in $session_dir"
   else
     ok "Session ${PROJECT_CONF[build_session]} in $session_dir (ic2 base ${PROJECT_CONF[ic2_base_session]})"
   fi
@@ -66,6 +68,14 @@ else
   problem "${resolve_error#ERROR: }"
 fi
 expected_isabelle="${PROJECT_CONF[isabelle_version]:-Isabelle2025-2}"
+use_pide_ai=false
+find_project_executable=find_isabelle
+isabelle_env=ISABELLE_TOOLING_ISABELLE
+if [[ "$expected_isabelle" == Isabelle2026 ]]; then
+  use_pide_ai=true
+  find_project_executable=find_isabelle2026
+  isabelle_env=ISABELLE_TOOLING_ISABELLE2026
+fi
 
 # --- ISABELLE_TOOLING_ROOT ------------------------------------------------------------
 #
@@ -73,7 +83,7 @@ expected_isabelle="${PROJECT_CONF[isabelle_version]:-Isabelle2025-2}"
 # tooling only through this variable.
 
 if [[ -z "${ISABELLE_TOOLING_ROOT:-}" ]]; then
-  problem "ISABELLE_TOOLING_ROOT is not set; the project's I/Q server and proof worker need it. Set it in your shell profile: export ISABELLE_TOOLING_ROOT=$TOOLING_ROOT, then restart the host session."
+  problem "ISABELLE_TOOLING_ROOT is not set; the project's agent tools need it. Set it in your shell profile: export ISABELLE_TOOLING_ROOT=$TOOLING_ROOT, then restart the host session."
 elif [[ "$(canonical_dir "$ISABELLE_TOOLING_ROOT" 2>/dev/null)" != "$TOOLING_ROOT" ]]; then
   problem "ISABELLE_TOOLING_ROOT names $ISABELLE_TOOLING_ROOT, but this doctor runs from $TOOLING_ROOT; point it at the runtime checkout, or run that checkout's doctor."
 else
@@ -84,37 +94,43 @@ fi
 
 isabelle_version=""
 isabelle_home_user=""
-if ISABELLE_CMD="$(find_isabelle)"; then
+if ISABELLE_CMD="$("$find_project_executable")"; then
   isabelle_version="$("$ISABELLE_CMD" version 2>/dev/null || true)"
   if [[ "$isabelle_version" == "$expected_isabelle" ]]; then
     ok "$expected_isabelle: $ISABELLE_CMD"
     isabelle_home_user="$("$ISABELLE_CMD" getenv -b ISABELLE_HOME_USER 2>/dev/null || true)"
   else
-    problem "Expected $expected_isabelle, found ${isabelle_version:-unusable} at $ISABELLE_CMD"
+    problem "Expected $expected_isabelle, found ${isabelle_version:-unusable} at $ISABELLE_CMD. Set $isabelle_env or check PATH."
   fi
 else
-  problem "Isabelle not found. Install $expected_isabelle from https://isabelle.in.tum.de, then put its bin/ on PATH or set ISABELLE_TOOLING_ISABELLE."
+  problem "Isabelle not found. Install $expected_isabelle from https://isabelle.in.tum.de, then put its bin/ on PATH or set $isabelle_env."
 fi
 
 # --- tooling clone and AutoCorrode submodule ------------------------------------------
 
 autocorrode_rev=""
-recorded_rev="$(git -C "$TOOLING_ROOT" ls-files --stage -- AutoCorrode 2>/dev/null | awk '$1 == "160000" {print $2; exit}')"
-if [[ -z "$recorded_rev" ]]; then
-  problem "AutoCorrode is not recorded as a submodule of the tooling clone."
-elif [[ ! -f "$AUTOCORRODE_DIR/iq/iq_bridge.py" ]]; then
-  problem "AutoCorrode is not populated; run: git -C $TOOLING_ROOT submodule update --init"
-else
-  autocorrode_rev="$(git -C "$AUTOCORRODE_DIR" rev-parse HEAD 2>/dev/null || true)"
-  if [[ "$autocorrode_rev" == "$recorded_rev" ]]; then
-    ok "AutoCorrode submodule matches the recorded revision: $autocorrode_rev"
+if [[ "$use_pide_ai" == false ]]; then
+  recorded_rev="$(git -C "$TOOLING_ROOT" ls-files --stage -- AutoCorrode 2>/dev/null | awk '$1 == "160000" {print $2; exit}')"
+  if [[ -z "$recorded_rev" ]]; then
+    problem "AutoCorrode is not recorded as a submodule of the tooling clone."
+  elif [[ ! -f "$AUTOCORRODE_DIR/iq/iq_bridge.py" ]]; then
+    problem "AutoCorrode is not populated; run: git -C $TOOLING_ROOT submodule update --init"
   else
-    problem "AutoCorrode HEAD (${autocorrode_rev:-unknown}) does not match the recorded gitlink ($recorded_rev); run: git -C $TOOLING_ROOT submodule update"
+    autocorrode_rev="$(git -C "$AUTOCORRODE_DIR" rev-parse HEAD 2>/dev/null || true)"
+    if [[ "$autocorrode_rev" == "$recorded_rev" ]]; then
+      ok "AutoCorrode submodule matches the recorded revision: $autocorrode_rev"
+    else
+      problem "AutoCorrode HEAD (${autocorrode_rev:-unknown}) does not match the recorded gitlink ($recorded_rev); run: git -C $TOOLING_ROOT submodule update"
+    fi
   fi
 fi
 
 tooling_head="$(git -C "$TOOLING_ROOT" rev-parse HEAD 2>/dev/null || true)"
-dirty="$(git -C "$TOOLING_ROOT" --no-optional-locks status --porcelain --ignore-submodules=none 2>/dev/null; git -C "$AUTOCORRODE_DIR" --no-optional-locks status --porcelain 2>/dev/null | sed 's|^|AutoCorrode/|')"
+if [[ "$use_pide_ai" == true ]]; then
+  dirty="$(git -C "$TOOLING_ROOT" --no-optional-locks status --porcelain --ignore-submodules=all 2>/dev/null)"
+else
+  dirty="$(git -C "$TOOLING_ROOT" --no-optional-locks status --porcelain --ignore-submodules=none 2>/dev/null; git -C "$AUTOCORRODE_DIR" --no-optional-locks status --porcelain 2>/dev/null | sed 's|^|AutoCorrode/|')"
+fi
 if [[ -n "$dirty" ]]; then
   if [[ "$ALLOW_DIRTY" == true ]]; then
     note "Tooling clone or submodule is modified (--allow-dirty): $(printf '%s' "$dirty" | awk '{print $2}' | paste -sd' ')"
@@ -122,7 +138,7 @@ if [[ -n "$dirty" ]]; then
     problem "Tooling clone or submodule is modified; scripts execute while HEAD still matches. Commit, or pass --allow-dirty: $(printf '%s' "$dirty" | awk '{print $2}' | paste -sd' ')"
   fi
 else
-  ok "Tooling clone and submodule are clean at $tooling_head"
+  ok "Tooling clone is clean at $tooling_head"
 fi
 # --- project files ----------------------------------------------------------------------
 #
@@ -155,7 +171,7 @@ fi
 # its marketplace, a user-level iq server or a user-level proof-worker profile
 # would duplicate them. CLAUDE_CONFIG_DIR and CODEX_HOME isolate fixtures.
 
-relay "Host configuration: " < <(python3 - "${PROJECT_CHECKOUT_ROOT:-}" <<'PYEOF'
+relay "Host configuration: " < <(python3 - "${PROJECT_CHECKOUT_ROOT:-}" "$use_pide_ai" <<'PYEOF'
 import json, os, sys, tomllib
 from pathlib import Path
 home = Path.home()
@@ -163,6 +179,8 @@ claude = Path(os.environ['CLAUDE_CONFIG_DIR']) if os.environ.get('CLAUDE_CONFIG_
 claude_json = claude / '.claude.json' if os.environ.get('CLAUDE_CONFIG_DIR') else home / '.claude.json'
 codex = Path(os.environ.get('CODEX_HOME') or home / '.codex')
 project = sys.argv[1]
+pide_ai = sys.argv[2] == 'true'
+server = 'isabelle-pide-mcp' if pide_ai else 'iq'
 found = []
 
 
@@ -193,12 +211,12 @@ for key in sorted(set(keys(load_json(claude / 'plugins/known_marketplaces.json')
         found.append(f'Claude Code knows the marketplace {key} ({claude}); remove it: '
                      f'claude plugin marketplace remove {key}')
 user = load_json(claude_json)
-if 'iq' in keys(user, 'mcpServers'):
-    found.append(f'Claude Code declares a user-level iq MCP server in {claude_json}; remove it: '
-                 'claude mcp remove --scope user iq')
-if project and 'iq' in keys(user, 'projects', project, 'mcpServers'):
-    found.append(f'Claude Code declares a local iq MCP server for {project} in {claude_json}; remove it: '
-                 'claude mcp remove --scope local iq')
+if server in keys(user, 'mcpServers'):
+    found.append(f'Claude Code declares a user-level {server} MCP server in {claude_json}; remove it: '
+                 f'claude mcp remove --scope user {server}')
+if project and server in keys(user, 'projects', project, 'mcpServers'):
+    found.append(f'Claude Code declares a local {server} MCP server for {project} in {claude_json}; remove it: '
+                 f'claude mcp remove --scope local {server}')
 config = codex / 'config.toml'
 try:
     codex_config = tomllib.loads(config.read_text()) if config.is_file() else {}
@@ -211,23 +229,33 @@ for key in keys(codex_config, 'plugins'):
 for key in keys(codex_config, 'marketplaces'):
     if market(key):
         found.append(f'Codex CLI knows the marketplace {key} in {config}; remove its [marketplaces] table')
-if 'iq' in keys(codex_config, 'mcp_servers'):
-    found.append(f'Codex CLI declares a user-level iq MCP server in {config}; remove [mcp_servers.iq] there')
-for path in sorted((claude / 'agents').glob('*.md')) if (claude / 'agents').is_dir() else []:
+if server in keys(codex_config, 'mcp_servers'):
+    found.append(f'Codex CLI declares a user-level {server} MCP server in {config}; remove [mcp_servers.{server}] there')
+for path in sorted((claude / 'agents').glob('*.md')) if not pide_ai else []:
     if path.stem == 'ic2-prover' or '\nname: ic2-prover\n' in path.read_text(errors='replace'):
         found.append(f'a user-level Claude Code proof-worker profile duplicates the project one: move {path} aside')
-for path in sorted((codex / 'agents').glob('*.toml')) if (codex / 'agents').is_dir() else []:
+for path in sorted((codex / 'agents').glob('*.toml')) if not pide_ai else []:
     if path.stem == 'ic2_prover' or '\nname = "ic2_prover"' in '\n' + path.read_text(errors='replace'):
         found.append(f'a user-level Codex CLI proof-worker profile duplicates the project one: move {path} aside')
 for message in found:
     print(f'[FAIL] {message}')
 if not found:
-    print(f'[OK]   no Isabelle plugin, marketplace, user-level iq server or proof-worker profile ({claude}, {codex})')
+    print(f'[OK]   no Isabelle plugin, marketplace, user-level {server} server'
+          + ('' if pide_ai else ' or proof-worker profile') + f' ({claude}, {codex})')
 PYEOF
 )
 
+if [[ "$use_pide_ai" == true && "$isabelle_version" == Isabelle2026 ]]; then
+  if pide_report="$(pide_ai_ready 2>&1)"; then
+    ok "PIDE AI $PIDE_AI_REVISION is registered and built."
+  else
+    problem "${pide_report#ERROR: }"
+  fi
+fi
+
 # --- ic2 component -----------------------------------------------------------------
 
+if [[ "$use_pide_ai" == false ]]; then
 if [[ -n "$isabelle_home_user" ]]; then
   mapfile -t ic2_components < <("$ISABELLE_CMD" components -l 2>/dev/null | awk '/^  \//{print $1}' | grep -E '/ic2$' || true)
   expected_component="$IC2_COMPONENT_DIR"
@@ -309,6 +337,7 @@ elif "$IR_VENV_DIR/bin/python3" -c 'import mcp, prompt_toolkit; from mcp.server.
   ok "I/R imports succeed with $IR_VENV_DIR/bin/python3"
 else
   problem "I/R imports fail in the tooling venv; rerun $TOOLING_ROOT/scripts/setup-ir-venv.sh"
+fi
 fi
 
 # --- agent-board, optional ----------------------------------------------------------------

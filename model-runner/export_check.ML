@@ -43,21 +43,16 @@
 structure Export_Check =
 struct
 
-fun getenv name = OS.Process.getEnv name
-
 fun require_env name =
   (case getenv name of
-    SOME value => value
-  | NONE => error (name ^ " is not set"))
+    "" => error (name ^ " is not set")
+  | value => value)
 
 val session = require_env "ISABELLE_EXPORT_CHECK_SESSION"
 val export_name = require_env "ISABELLE_EXPORT_CHECK_EXPORT_NAME"
 val audit_collection = require_env "ISABELLE_EXPORT_CHECK_AUDIT"
-val allowlist =
-  (case getenv "ISABELLE_EXPORT_CHECK_ALLOWLIST" of
-    SOME text => String.tokens Char.isSpace text
-  | NONE => [])
-val verbose = is_some (getenv "ISABELLE_EXPORT_CHECK_VERBOSE")
+val allowlist = String.tokens Char.isSpace (getenv "ISABELLE_EXPORT_CHECK_ALLOWLIST")
+val verbose = getenv "ISABELLE_EXPORT_CHECK_VERBOSE" <> ""
 
 val (export_theory_name, export_path) =
   (case space_explode ":" export_name of
@@ -78,17 +73,17 @@ fun out text = Output.physical_stdout (text ^ "\n")
 (* Session theories and the merged context *)
 
 val project_theory_names =
-  filter (fn name => Resources.theory_qualifier name = session) (Thy_Info.get_names ())
+  filter (fn name => Resources.theory_qualifier name = session) (Export_Check_API.names ())
 
 val _ =
   null project_theory_names andalso
     error ("no loaded theory belongs to session " ^ session ^
       " (is the heap built and -l " ^ session ^ " in effect?)")
 
-val project_theories = map Thy_Info.get_theory project_theory_names
+val project_theories = map Export_Check_API.get_theory project_theory_names
 
 val export_theory =
-  (case Thy_Info.lookup_theory export_theory_name of
+  (case Export_Check_API.lookup_theory export_theory_name of
     SOME thy => thy
   | NONE => error ("export theory not loaded: " ^ export_theory_name))
 
@@ -115,7 +110,7 @@ fun theory_source thy =
   let
     val path =
       Path.append (Resources.master_directory thy)
-        (Resources.thy_path (Path.basic (Context.theory_base_name thy)))
+        (Path.ext "thy" (Path.basic (Context.theory_base_name thy)))
   in
     (path, File.read path)
   end
@@ -136,7 +131,7 @@ fun command_spans thy =
             then SOME (Token.content_of command, rest, Token.pos_of command)
             else NONE
         | [] => NONE)
-      end) (Outer_Syntax.parse_spans tokens)
+      end) (Export_Check_API.parse_spans keywords tokens)
   end
 
 fun is_keyword word token = Token.keyword_with (fn x => x = word) token
@@ -395,7 +390,7 @@ val _ =
     else
       (List.app (fn p => out ("  FAIL " ^ p)) (distinct (op =) problems);
        out ("export check: FAILED with " ^ string_of_int (length (distinct (op =) problems)) ^ " problem(s)");
-       OS.Process.exit OS.Process.failure)
+       Export_Check_API.fail ())
   end
 
 end

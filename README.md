@@ -42,8 +42,8 @@ docs/                  architecture; standing notes on isolation and security
 - **Isabelle2025-2**, installed by you where you choose, with its `bin/` on
   `PATH` or named by `ISABELLE_TOOLING_ISABELLE`. The tooling never downloads
   Isabelle; `doctor` names the expected release and
-  <https://isabelle.in.tum.de> when it is missing. Only this one release is
-  supported; theories are not portable across releases.
+  <https://isabelle.in.tum.de> when it is missing. This is the default
+  release for ic2 and I/Q. See the Isabelle2026 workflow below for PIDE AI.
 - Git, Python 3.10 or newer, Make, OpenSSL; ShellCheck when changing the
   scripts; TeX Live only for a project's PDF document build.
 - systemd with a user session, for the prover memory bound (optional; without
@@ -83,6 +83,47 @@ authenticates every connection with the same file (`IQ_TOKEN_FILE` overrides
 the path for the launcher, the bridge and doctor alike), so agents never read
 the token and need no permission for it. When the two disagree, every I/Q
 call fails with "I/Q did not accept the token".
+
+## Opt in to Isabelle2026 and PIDE AI
+
+Install the official [Isabelle2026 Linux distribution](https://isabelle.in.tum.de/)
+alongside any existing Isabelle installation. From a tooling clone at a
+revision that includes PIDE AI, run:
+
+```bash
+export ISABELLE_TOOLING_ROOT=/path/to/isabelle-formal-modeling-tooling
+export ISABELLE_TOOLING_ISABELLE2026=/path/to/Isabelle2026
+"$ISABELLE_TOOLING_ROOT/scripts/setup-pide-ai.sh"
+```
+
+Setup fetches the pinned PIDE AI commit into `.pide-ai/` inside the tooling
+clone, registers it in the Isabelle2026 user home, and compiles the component.
+The setup command prints the corresponding `components -x` command for
+unregistering it. Run setup again after changing the tooling clone's path or
+using a different Isabelle user home.
+
+In a project checkout, use a tooling revision that contains the PIDE AI
+workflow. Replace `REV` with that revision and run:
+
+```bash
+"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" init --revision REV --session MyProject --kind theory --isabelle-version Isabelle2026
+```
+
+For an existing project, first build its theories with Isabelle2026 and
+resolve any release-specific proof changes. Then run
+`isabelle-tooling update REV --isabelle-version Isabelle2026` using the
+same CLI. Review the changes to managed files and the descriptor, and update
+any project-owned instructions that name the previous release. To switch
+back, use `update PREVIOUS_REV --isabelle-version Isabelle2025-2` and restore
+any release-specific theory edits through Git. Run `doctor` before starting
+Codex or Claude Code from the project checkout.
+
+The managed `isabelle-pide-mcp` server runs over stdio. It loads the project's
+session requirements, keeps project theories editable, and writes escaped
+Isabelle symbols to disk. Codex and Claude Code must inherit the exported
+variables. PIDE AI has a separate document session from jEdit. Coordinate
+file ownership when using both. Use the Isabelle2026 executable with
+`build -D <formal-root>` for final verification.
 
 ## Quick start: a new project
 

@@ -40,9 +40,12 @@
 structure Model_Runner =
 struct
 
-fun message text = TextIO.output (TextIO.stdErr, "model-runner: " ^ text ^ "\n")
+fun fail text = error ("model-runner: " ^ text)
 
-fun fail text = (message text; OS.Process.exit OS.Process.failure)
+fun getenv_option name =
+  (case getenv name of
+    "" => NONE
+  | value => SOME value)
 
 fun strip_line_end line =
   let
@@ -123,14 +126,14 @@ fun resident input_path =
   end
 
 val _ =
-  (case OS.Process.getEnv "ISABELLE_MODEL_RUNNER_MODE" of
+  (case getenv_option "ISABELLE_MODEL_RUNNER_MODE" of
     SOME "batch" =>
-      (case (OS.Process.getEnv "ISABELLE_MODEL_RUNNER_INPUT",
-             OS.Process.getEnv "ISABELLE_MODEL_RUNNER_OUTPUT") of
+      (case (getenv_option "ISABELLE_MODEL_RUNNER_INPUT",
+             getenv_option "ISABELLE_MODEL_RUNNER_OUTPUT") of
         (SOME input_path, SOME output_path) => batch input_path output_path
       | (NONE, _) => fail "ISABELLE_MODEL_RUNNER_INPUT is not set"
       | (_, NONE) => fail "ISABELLE_MODEL_RUNNER_OUTPUT is not set")
-  | SOME "resident" => resident (OS.Process.getEnv "ISABELLE_MODEL_RUNNER_INPUT")
+  | SOME "resident" => resident (getenv_option "ISABELLE_MODEL_RUNNER_INPUT")
   | SOME other => fail ("unknown ISABELLE_MODEL_RUNNER_MODE: " ^ other)
   | NONE => fail "ISABELLE_MODEL_RUNNER_MODE is not set")
 

@@ -2,9 +2,15 @@
 
 ## Components
 
-The host owns everything: the Isabelle2025-2 installation, the project Git
+For the default workflow, the host owns the Isabelle2025-2 installation, the project Git
 worktrees, the agent, Isabelle/jEdit for human review, and this tooling clone
 with its AutoCorrode submodule, I/R Python environment, and built ic2 JAR.
+
+Projects can opt in to Isabelle2026 in their descriptor. The managed agent
+configuration then launches PIDE AI over stdio for that checkout. The launcher
+loads the project's session requirements, leaving its theories editable.
+Setup keeps the pinned PIDE AI source and JARs under `.pide-ai/` in the
+tooling clone and registers the component in the Isabelle2026 user home.
 
 The earlier containerized design (in this repository's history and in the
 project that extracted it) is gone from the core workflow; isolation is

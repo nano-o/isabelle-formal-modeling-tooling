@@ -11,7 +11,8 @@ TEST_FILES := \
 	tests/model_runner_test.sh \
 	tests/export_check_test.sh \
 	tests/board_notifier_test.sh \
-	tests/install_iq_plugin_test.sh
+	tests/install_iq_plugin_test.sh \
+	tests/setup_pide_ai_test.sh
 ISABELLE_TEST_FILES := \
 	tests/isabelle/export_check_test.sh \
 	tests/isabelle/model_runner_test.sh \

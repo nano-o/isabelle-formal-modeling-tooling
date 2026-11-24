@@ -99,8 +99,10 @@ export ISABELLE_TOOLING_ISABELLE2026=/path/to/Isabelle2026
 Setup fetches the pinned PIDE AI commit into `.pide-ai/` inside the tooling
 clone, registers it in the Isabelle2026 user home, and compiles the component.
 The setup command prints the corresponding `components -x` command for
-unregistering it. Run setup again after changing the tooling clone's path or
-using a different Isabelle user home.
+unregistering it. Run setup again after a tooling update changes the pin,
+after moving the tooling clone, or when using a different Isabelle user home.
+Setup replaces the registration of an earlier pin, but refuses a PIDE AI
+component registered by anything else.
 
 In a project checkout, use a tooling revision that contains the PIDE AI
 workflow. Replace `REV` with that revision and run:
@@ -116,7 +118,9 @@ same CLI. Review the changes to managed files and the descriptor, and update
 any project-owned instructions that name the previous release. To switch
 back, use `update PREVIOUS_REV --isabelle-version Isabelle2025-2` and restore
 any release-specific theory edits through Git. Run `doctor` before starting
-Codex or Claude Code from the project checkout.
+Codex or Claude Code from the project checkout. After the switch, `ic2.sh`
+runs only `name`, `server status`, `stop` and `worktree unmark`, to wind down
+a server started before it.
 
 The managed `isabelle-pide-mcp` server runs over stdio. It loads the project's
 session requirements, keeps project theories editable, and writes escaped

@@ -8,6 +8,11 @@ SCRIPT="$ROOT/scripts/export-check.sh"
 FIXTURES="$ROOT/tests/fixtures/export-check"
 OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/isabelle-export-check-test.XXXXXX")"
 trap 'rm -rf -- "$OUT_DIR"' EXIT
+if [[ "$(isabelle version)" == Isabelle2026 ]]; then
+  cp -R "$FIXTURES" "$OUT_DIR/fixtures"
+  FIXTURES="$OUT_DIR/fixtures"
+  sed -i 's/^isabelle_version=.*/isabelle_version=Isabelle2026/' "$FIXTURES"/*/isabelle-tooling.conf
+fi
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 

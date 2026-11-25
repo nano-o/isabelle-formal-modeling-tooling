@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "component": "isabelle-tooling",
+  "kinds": ["code", "theory"],
+  "skills": [
+    {"name": "isabelle-pide-ai", "source": "extension/skills/isabelle-pide-ai"},
+    {"name": "isabelle-modeling", "source": "extension/skills/isabelle-modeling", "kinds": ["code"]},
+    {"name": "isabelle-differential", "source": "extension/skills/isabelle-differential", "kinds": ["code"]},
+    {"name": "isabelle-assurance", "source": "extension/skills/isabelle-assurance", "kinds": ["code"]}
+  ],
+  "json_entries": [
+    {"file": ".mcp.json", "pointer": "/mcpServers/isabelle-pide-mcp", "source": "extension/project/mcp-pide-ai.json"}
+  ],
+  "toml_blocks": [
+    {"file": ".codex/config.toml", "table": "mcp_servers.isabelle-pide-mcp", "source": "extension/project/codex-pide-ai.toml"}
+  ],
+  "markdown_block": "extension/project/instructions-pide-ai.md"
+}

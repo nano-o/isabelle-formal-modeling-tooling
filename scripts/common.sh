@@ -314,6 +314,35 @@ require_isabelle() {
     die "Isabelle not found: put its bin/ on PATH or set ISABELLE_TOOLING_ISABELLE"
 }
 
+# Keep the existing PATH-first lookup for legacy projects. A host with both
+# releases can name 2026 independently, without changing its normal PATH.
+find_isabelle2026() {
+  local candidate="${ISABELLE_TOOLING_ISABELLE2026:-}"
+  if [[ -z "$candidate" ]]; then
+    candidate="$(find_isabelle)" || return 1
+  fi
+  [[ ! -d "$candidate" ]] || candidate="$candidate/bin/isabelle"
+  [[ -x "$candidate" ]] || return 1
+  readlink -f -- "$candidate"
+}
+
+require_isabelle2026() {
+  ISABELLE_CMD="$(find_isabelle2026)" ||
+    die "Isabelle2026 not found. Set ISABELLE_TOOLING_ISABELLE2026 to its installation directory or executable."
+  local version
+  version="$("$ISABELLE_CMD" version)" || die "Cannot run Isabelle at $ISABELLE_CMD"
+  [[ "$version" == Isabelle2026 ]] ||
+    die "Expected Isabelle2026, found $version at $ISABELLE_CMD. Set ISABELLE_TOOLING_ISABELLE2026."
+}
+
+require_project_isabelle() {
+  if [[ "${PROJECT_CONF[isabelle_version]}" == Isabelle2026 ]]; then
+    require_isabelle2026
+  else
+    require_isabelle
+  fi
+}
+
 # heap_to_megabytes VALUE: parse a human-readable heap bound (12G, 512M,
 # 12288) to a plain number of megabytes.
 heap_to_megabytes() {
@@ -410,38 +439,6 @@ jedit_owns() {
   esac
   # shellcheck disable=SC2034
   JEDIT_OWNER="pid $(sed -n 's/^pid=//p' "$record"), write root $(sed -n 's/^root=//p' "$record")"
-}
-
-# ---------------------------------------------------------------------------
-# agent-board, optional
-#
-# A checkout uses agent-board when agent-board.conf is at its root. The
-# executable is AGENT_BOARD_COMMAND (one absolute path, no arguments), else
-# agent-board on PATH; its identity is the resolved real path. The tooling
-# never reads the board's descriptor or storage.
-
-# The agent-board interface this adapter supports; doctor requires the
-# executable's `version --json` to report it, with the doctor and project
-# capabilities.
-# shellcheck disable=SC2034
-AGENT_BOARD_INTERFACE=1
-
-# board_configured CHECKOUT_ROOT: whether the checkout uses agent-board.
-board_configured() {
-  [[ -f "$1/agent-board.conf" ]]
-}
-
-# resolve_agent_board: print the resolved real path of the agent-board
-# executable, or fail when it does not resolve.
-resolve_agent_board() {
-  local cmd="${AGENT_BOARD_COMMAND:-}"
-  if [[ -n "$cmd" ]]; then
-    [[ "$cmd" == /* && -f "$cmd" && -x "$cmd" ]] || return 1
-  else
-    cmd="$(command -v agent-board 2>/dev/null)" || return 1
-    [[ "$cmd" == /* ]] || return 1
-  fi
-  readlink -f -- "$cmd"
 }
 
 # descendant_pids PID: every descendant of PID, one per line, or nothing when

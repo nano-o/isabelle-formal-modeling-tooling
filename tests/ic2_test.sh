@@ -118,4 +118,26 @@ run_and_capture 0 start-jedit-gone "$SCRIPT" --project-root "$proof" --dry-run s
 run_and_capture 0 check-jedit-gone "$SCRIPT" --project-root "$proof" check Test/Foo.thy
 assert_output_contains check-jedit-gone "mock ic2: check -n"
 
+# After a switch to Isabelle2026, ic2.sh still stops a server started before
+# it and removes the worktree mark, but refuses new ic2 work.
+switched="$TEST_TMP_DIR/switched"
+git_project "$switched"
+sed -i 's/^isabelle_version=.*/isabelle_version=Isabelle2026/' "$switched/isabelle-tooling.conf"
+"$SCRIPT" --project-root "$switched" worktree unmark >/dev/null 2>&1 ||
+  fail "switched: worktree unmark refused"
+switched_name="$("$SCRIPT" --project-root "$switched" name)"
+[[ "$switched_name" == ic2-switched-* ]] || fail "switched: derived name: $switched_name"
+printf 'running\n' >"$MOCK_ISABELLE_STATE_DIR/server"
+run_and_capture 0 switched-status "$SCRIPT" --project-root "$switched" server status
+assert_output_contains switched-status "state=ready"
+run_and_capture 0 switched-stop "$SCRIPT" --project-root "$switched" stop
+assert_output_contains switched-stop "Stopped: $switched_name"
+refused=0
+for action in start preflight "worktree mark" "check Test/Foo.thy" "check status" "query sorry Test/Foo.thy"; do
+  refused=$((refused + 1))
+  read -ra words <<<"$action"
+  run_and_capture 2 "switched-refused-$refused" "$SCRIPT" --project-root "$switched" "${words[@]}"
+  assert_output_contains "switched-refused-$refused" "uses the isabelle-pide-mcp server"
+done
+
 echo "ic2.sh tests passed"

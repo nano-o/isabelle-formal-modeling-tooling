@@ -8,6 +8,11 @@ SCRIPT="$ROOT/scripts/model-runner.sh"
 FIXTURE="$ROOT/tests/fixtures/export-check/clean"
 OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/isabelle-model-runner-test.XXXXXX")"
 trap 'rm -rf -- "$OUT_DIR"' EXIT
+if [[ "$(isabelle version)" == Isabelle2026 ]]; then
+  cp -R "$FIXTURE" "$OUT_DIR/fixture"
+  FIXTURE="$OUT_DIR/fixture"
+  sed -i 's/^isabelle_version=.*/isabelle_version=Isabelle2026/' "$FIXTURE/isabelle-tooling.conf"
+fi
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -37,3 +42,16 @@ printf 'v1\tsucc_bounded\tc1\t41\n# note\n\nv1\tsucc_bounded\tc3\t-5\nv1\tbogus\
 printf '#ready\nv1\tsucc_bounded\tc1\t41\tOK\t42\n# note\n#\n#reject\t4\tnegative nat: -5\n#reject\t5\tunknown tag: bogus\n#error\t6\tFail "deliberate dispatch crash"\nv1\tsucc_bounded\tc6\t7\tOK\t8\n' >"$OUT_DIR/resident.expected"
 cmp "$OUT_DIR/resident.expected" "$OUT_DIR/resident.out" || { cat -A "$OUT_DIR/resident.out" >&2; fail "resident answers differ"; }
 echo "model_runner_test: resident ok"
+
+# Resident: a failure, here an input that cannot be opened, comes before
+# #ready and reports on standard error.
+rc=0
+ISABELLE_MODEL_RUNNER_MODE=resident ISABELLE_MODEL_RUNNER_INPUT="$OUT_DIR/absent" \
+  isabelle ML_process -l Pure \
+    -e 'structure Model_Dispatch = struct exception Reject of string fun dispatch (line: string) = line end' \
+    -f "$ROOT/model-runner/runner.ML" >"$OUT_DIR/absent.out" 2>"$OUT_DIR/absent.err" || rc=$?
+[[ "$rc" -ne 0 ]] || fail "resident mode ran without its input"
+grep -qx "model-runner: cannot open input: $OUT_DIR/absent" "$OUT_DIR/absent.err" ||
+  { cat "$OUT_DIR/absent.out" "$OUT_DIR/absent.err" >&2; fail "the input failure is not on standard error"; }
+! grep -q '^#ready' "$OUT_DIR/absent.out" || fail "resident mode printed #ready before failing"
+echo "model_runner_test: resident failure ok"

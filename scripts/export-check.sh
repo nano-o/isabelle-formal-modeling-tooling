@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 resolve_project "$requested_root"
-require_isabelle
+require_project_isabelle
 
 SESSION="${PROJECT_CONF[build_session]}"
 SESSION_PATH="$PROJECT_FORMAL_ROOT/${PROJECT_CONF[session_dir]}"
@@ -79,7 +79,25 @@ Add export_name=SESSION.THEORY:PATH as listed by 'isabelle export -l -d SESSION_
 EXPORT_THEORY="${EXPORT_NAME%%:*}"
 # The check is compiled in the export theory's ML context: the raw ML_process
 # toplevel does not see the tool structures HOL loads (Code_Preproc, Typedef).
-EVAL_CHECK="Context.setmp_generic_context (SOME (Context.Theory (Thy_Info.get_theory \"$EXPORT_THEORY\"))) (ML_Context.eval_file ML_Compiler.flags) (Path.explode \"$CHECK_ML\")"
+theory_table=Thy_Info
+theory_names=get_names
+span_parser='K Outer_Syntax.parse_spans'
+exit_failure='exit 1'
+if [[ "${PROJECT_CONF[isabelle_version]}" == Isabelle2026 ]]; then
+  theory_table=Build
+  theory_names=all_theories
+  span_parser='Outer_Syntax.parse_spans o Keyword.command_kind'
+  exit_failure='PolyML.exit 1'
+fi
+EVAL_CHECK="structure Export_Check_API = struct
+  val names = $theory_table.$theory_names
+  val get_theory = $theory_table.get_theory
+  val lookup_theory = $theory_table.lookup_theory
+  val parse_spans: Keyword.keywords -> Token.T list -> Command_Span.span list = $span_parser
+  fun fail () = $exit_failure
+end;
+val _ = Context.setmp_generic_context (SOME (Context.Theory (Export_Check_API.get_theory \"$EXPORT_THEORY\")))
+  (ML_Context.eval_file ML_Compiler.flags) (Path.explode \"$CHECK_ML\")"
 
 run() {
   if $DRY_RUN; then
@@ -112,9 +130,8 @@ if $DRY_RUN; then
   exit 0
 fi
 
-# The check prints its verdict and exits the ML process itself on failure; an
-# ML error while loading the file also fails the process, and a missing
-# verdict line is treated as a failure too.
+# The check signals a failed audit with its process status. An ML error or
+# a missing success verdict also fails the check.
 output_file="$(mktemp "${TMPDIR:-/tmp}/isabelle-export-check.XXXXXX")"
 trap 'rm -f -- "$output_file"' EXIT
 status=0

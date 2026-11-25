@@ -25,7 +25,7 @@ scripts/start-ic2.sh   native `ic2 server start` wrapper (base session, heap bou
 scripts/stop-ic2.sh    native `ic2 server stop` wrapper
 scripts/build-ic2.sh   register the ic2 component and build its JAR
 bin/isabelle-tooling   command interface: skills list/show, init/sync/update/remove, doctor
-scripts/isabelle_tooling.py  its implementation; project_files.py holds the rules shared with agent-board
+scripts/isabelle_tooling.py  its implementation; project_files.py installs and verifies managed files
 scripts/new-project.sh the session renderer behind `init`, reading templates/ from the pinned commit
 scripts/render-agents.sh  render the two host worker profiles from agents/
 extension/             skills, worker profiles, the iq bridge launcher; project/ is what init installs
@@ -42,8 +42,8 @@ docs/                  architecture; standing notes on isolation and security
 - **Isabelle2025-2**, installed by you where you choose, with its `bin/` on
   `PATH` or named by `ISABELLE_TOOLING_ISABELLE`. The tooling never downloads
   Isabelle; `doctor` names the expected release and
-  <https://isabelle.in.tum.de> when it is missing. Only this one release is
-  supported; theories are not portable across releases.
+  <https://isabelle.in.tum.de> when it is missing. This is the default
+  release for ic2 and I/Q. See the Isabelle2026 workflow below for PIDE AI.
 - Git, Python 3.10 or newer, Make, OpenSSL; ShellCheck when changing the
   scripts; TeX Live only for a project's PDF document build.
 - systemd with a user session, for the prover memory bound (optional; without
@@ -84,6 +84,51 @@ the path for the launcher, the bridge and doctor alike), so agents never read
 the token and need no permission for it. When the two disagree, every I/Q
 call fails with "I/Q did not accept the token".
 
+## Opt in to Isabelle2026 and PIDE AI
+
+Install the official [Isabelle2026 Linux distribution](https://isabelle.in.tum.de/)
+alongside any existing Isabelle installation. From a tooling clone at a
+revision that includes PIDE AI, run:
+
+```bash
+export ISABELLE_TOOLING_ROOT=/path/to/isabelle-formal-modeling-tooling
+export ISABELLE_TOOLING_ISABELLE2026=/path/to/Isabelle2026
+"$ISABELLE_TOOLING_ROOT/scripts/setup-pide-ai.sh"
+```
+
+Setup fetches the pinned PIDE AI commit into `.pide-ai/` inside the tooling
+clone, registers it in the Isabelle2026 user home, and compiles the component.
+The setup command prints the corresponding `components -x` command for
+unregistering it. Run setup again after a tooling update changes the pin,
+after moving the tooling clone, or when using a different Isabelle user home.
+Setup replaces the registration of an earlier pin, but refuses a PIDE AI
+component registered by anything else.
+
+In a project checkout, use a tooling revision that contains the PIDE AI
+workflow. Replace `REV` with that revision and run:
+
+```bash
+"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" init --revision REV --session MyProject --kind theory --isabelle-version Isabelle2026
+```
+
+For an existing project, first build its theories with Isabelle2026 and
+resolve any release-specific proof changes. Then run
+`isabelle-tooling update REV --isabelle-version Isabelle2026` using the
+same CLI. Review the changes to managed files and the descriptor, and update
+any project-owned instructions that name the previous release. To switch
+back, use `update PREVIOUS_REV --isabelle-version Isabelle2025-2` and restore
+any release-specific theory edits through Git. Run `doctor` before starting
+Codex or Claude Code from the project checkout. After the switch, `ic2.sh`
+runs only `name`, `server status`, `stop` and `worktree unmark`, to wind down
+a server started before it.
+
+The managed `isabelle-pide-mcp` server runs over stdio. It loads the project's
+session requirements, keeps project theories editable, and writes escaped
+Isabelle symbols to disk. Codex and Claude Code must inherit the exported
+variables. PIDE AI has a separate document session from jEdit. Coordinate
+file ownership when using both. Use the Isabelle2026 executable with
+`build -D <formal-root>` for final verification.
+
 ## Quick start: a new project
 
 With the tooling clone set up (above), `ISABELLE_TOOLING_ROOT` naming it in
@@ -117,14 +162,6 @@ doctor`. The steps only you can do are the ones under "Setting up the tooling
 clone" that write under your home directory, and removing an installed
 Isabelle plugin, a user-level `iq` server or `ic2-prover` profile, which
 doctor names with the command to run.
-
-To coordinate several agents in the project, add
-[agent-board](https://github.com/nano-o/agent-board), a separate tool with
-its own README: put `agent-board` on `PATH` (or set
-`AGENT_BOARD_COMMAND`), run `agent-board init` and optionally
-`agent-board install-hook`, and commit what it printed. The two installers
-own disjoint files and can run in either order; stage what the first printed
-before running the second.
 
 Later:
 
@@ -349,22 +386,6 @@ its server has stopped. A plain `isabelle jedit` records nothing. Agents
 reach the live PIDE document through the I/Q MCP bridge,
 `AutoCorrode/iq/iq_bridge.py`, launched from this clone.
 
-## Several agents on one repository
-
-Agents that share a repository and its worktrees can coordinate through
-agent-board, a separate repository with its own CLI, skill and Claude Code
-digest hook; it used to live here as `scripts/board.sh`. A checkout opts
-in with `agent-board.conf` at its root, which `agent-board init` writes with
-the board's own project files; this tooling never installs the board. When
-the checkout is configured and `agent-board` resolves
-(`AGENT_BOARD_COMMAND`, else `PATH`),
-`ic2.sh start` and `stop` post a note as `ic2`, waiting at most five
-seconds for the board. The proof resources agents claim are theory files,
-proof branches and `token:jedit`, the human's I/Q session in the jEdit
-worktree. A delegation brief's first line makes the proof worker
-independent (`Mode: independent. Handle: HANDLE.`) or supervised (`Mode:
-supervised by HANDLE.`); both worker profiles describe the two modes.
-
 ## Differential testing: the model runner and the export check
 
 Differential testing is a method the `isabelle-differential` skill teaches,
@@ -438,12 +459,11 @@ from `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when set, where an Isabelle plugin
 or its marketplace, a user-level `iq` MCP server or a user-level
 `ic2-prover` profile fails; exactly one ic2 component, registered from this
 clone, with its JAR built; systemd user scopes; the I/Q plugin stamp and
-token; the I/R environment against the lock file; and, when the project has
-`agent-board.conf`, the board: `agent-board` must resolve and report
-interface 1 with the `doctor` and `project` capabilities, and each check of
-its `doctor --json` is reported as `board: ID: MESSAGE`. It prints
-remediation commands and never runs them, and it writes nothing, in the
-project or in the clone.
+token; and the I/R environment against the lock file. For an Isabelle2026
+project, doctor checks the PIDE AI component and its JARs instead of the
+AutoCorrode submodule, the ic2 component, systemd user scopes, the I/Q plugin
+and token, and the I/R environment. Doctor prints
+remediation commands without running them or writing files.
 
 ## Validation
 

@@ -1,15 +1,35 @@
 #!/usr/bin/env python3
-"""bin/isabelle-tooling: skill inspection, the project operations, and doctor's new checks.
+"""bin/isabelle-tooling and its installer, scripts/project_files.py.
 
-Every test runs a scratch runtime checkout built from this working tree
-(without the AutoCorrode submodule): `stable` at its first commit, `next`
-one commit later with a supporting reference file in a skill and an edited
-skill. Projects are disposable, with isolated Git and host configuration.
-`before-kinds`, off `stable`, has the manifest and templates of a revision
-from before project kinds. The rules shared with agent-board
-(scripts/project_files.py) are tested in depth there; these tests cover what
-the Isabelle tooling adds and the installer cases of the fixtures in
-docs/validation.md.
+ToolingTests drive the command line: skill inspection, the project
+operations (init, sync, update, remove and sync --check) and doctor's
+project and host checks. Each test runs a scratch runtime checkout built
+from this working tree (without the AutoCorrode submodule): `stable` at its
+first commit, `next` one commit later with a supporting reference file in a
+skill and an edited skill, `before-kinds`, off `stable`, with the manifest
+and templates of a revision from before project kinds, and `extras`, off
+`stable`, whose manifest adds an owned array element and an executable
+file. Projects are disposable, with isolated Git and host configuration.
+
+They cover the installer cases in docs/validation.md and the installer's
+rules in depth: the session scaffold; owned JSON members and array
+elements, TOML and Markdown blocks merged into project files and removed
+again; executable files; root AGENTS.md and CLAUDE.md in each combination;
+the Claude Code skill aliases or a shared skills directory; unmanaged
+collisions; edited managed files, entries and blocks, and files added to a
+managed skill directory; preflight against the index (unstaged, untracked
+and ignored paths); skill parents that are symlinks out of the checkout;
+malformed descriptors, missing pinned commits and revisions without a
+manifest; the pin that only update moves; adoption of a descriptor without
+an inventory; link mode; project kinds and Isabelle release switches;
+--project-root from another directory; the installer lock; publication
+across filesystems; an injected failure after each publication step of
+init, update and remove, whose printed commands restore the tree and the
+index; and a read-only doctor.
+
+KindTests check how manifest kinds select skills, through a fake spec on a
+scratch runtime; KeyValueTests check the descriptor's key=value lines.
+Both call scripts/project_files.py directly.
 """
 import hashlib
 import json
@@ -20,6 +40,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import tomllib
 import unittest
 
 SOURCE = Path(__file__).resolve().parents[1]
@@ -74,7 +95,7 @@ class ToolingTests(unittest.TestCase):
         shutil.copy(SOURCE / 'tests/fixtures/isabelle', bindir / 'isabelle')
         cls.runtime = cls.base / 'runtime'
         cls.env = {k: v for k, v in os.environ.items()
-                   if not k.startswith(('GIT_', 'AGENT_BOARD_', 'ISABELLE_', 'CLAUDE_', 'CODEX_'))}
+                   if not k.startswith(('GIT_', 'ISABELLE_', 'CLAUDE_', 'CODEX_'))}
         cls.env.update(HOME=str(home), GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
                        GIT_TERMINAL_PROMPT='0', GIT_AUTHOR_NAME='test', GIT_AUTHOR_EMAIL='test@example.invalid',
                        GIT_COMMITTER_NAME='test', GIT_COMMITTER_EMAIL='test@example.invalid',
@@ -117,6 +138,20 @@ class ToolingTests(unittest.TestCase):
         cls.git_in(cls.runtime, 'rm', '-rq', 'templates/theory')
         cls.git_in(cls.runtime, 'commit', '-qam', 'before kinds')
         cls.rev0 = cls.git_in(cls.runtime, 'rev-parse', 'HEAD').strip()
+        # extras, off stable: an owned array element and an executable file, which the real manifest lacks.
+        cls.git_in(cls.runtime, 'checkout', '-q', '-b', 'extras', 'stable')
+        manifest = json.loads(manifest_path.read_text())
+        manifest['files'].append(dict(path='bin/session-hook.sh', source='extras/session-hook.sh', executable=True))
+        manifest['json_entries'].append(dict(file='.claude/settings.json', pointer='/hooks/SessionStart',
+                                             element=True, marker='bin/session-hook.sh',
+                                             source='extras/session-hook.json'))
+        manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
+        (cls.runtime / 'extras').mkdir()
+        (cls.runtime / 'extras/session-hook.sh').write_text('#!/bin/sh\nexit 0\n')
+        (cls.runtime / 'extras/session-hook.json').write_text(json.dumps(
+            {'hooks': [{'type': 'command', 'command': '"$CLAUDE_PROJECT_DIR/bin/session-hook.sh"'}]}))
+        cls.git_in(cls.runtime, 'add', '-A')
+        cls.git_in(cls.runtime, 'commit', '-qm', 'extras')
         cls.git_in(cls.runtime, 'checkout', '-q', 'main')
         cls.cli = cls.runtime / 'bin/isabelle-tooling'
 
@@ -148,6 +183,12 @@ class ToolingTests(unittest.TestCase):
         self.git('add', '-A')
         self.git('commit', '-qm', 'state', '--allow-empty')
 
+    def fresh_project(self, name):
+        """Point the helpers at a new empty repository NAME beside the first."""
+        self.project = self.work / name
+        self.project.mkdir()
+        self.git('init', '-q', '-b', 'main')
+
     def it(self, *args, code=0, cwd=None, env=None):
         result = subprocess.run([str(self.cli), *args], cwd=cwd or self.project, env=env or self.env,
                                 capture_output=True, timeout=120)
@@ -162,6 +203,10 @@ class ToolingTests(unittest.TestCase):
 
     def read(self, rel):
         return (self.project / rel).read_text()
+
+    def state(self):
+        """The whole working tree and the Git status, to show that a refused operation changed nothing."""
+        return snapshot(self.project), self.git('status', '--porcelain', '--ignored', '--untracked-files=all')
 
     def blob(self, rev, path):
         return subprocess.run(['git', '-C', str(self.runtime), 'cat-file', 'blob', f'{rev}:{path}'],
@@ -200,12 +245,21 @@ class ToolingTests(unittest.TestCase):
         agents = self.read('AGENTS.md')
         self.assertIn('under `formal/`; read\n`formal/AGENTS.md`', agents)
         self.assertEqual(os.readlink(self.project / 'CLAUDE.md'), 'AGENTS.md')
+        inventory = json.loads(self.read('.isabelle-tooling/inventory.json'))
+        self.assertEqual(inventory['revision'], self.rev1)
+        self.assertEqual(inventory['directories'], [f'.agents/skills/{name}' for name in sorted(SKILLS)])
+        self.assertEqual([(b['file'], b['syntax']) for b in inventory['blocks']],
+                         [('.codex/config.toml', 'toml'), ('AGENTS.md', 'markdown')])
+        # The session scaffold belongs to the project; the inventory never records itself.
+        self.assertFalse([rel for rel in inventory['files'] if rel.startswith(('formal/', '.isabelle-tooling/'))])
         self.check()
         for text in [self.read(p) for p in ('.mcp.json', '.codex/config.toml', 'AGENTS.md', 'isabelle-tooling.conf',
                                             '.isabelle-tooling/inventory.json')]:
             self.assertNotIn(str(self.base), text)  # no machine paths in committed files
+        self.assertEqual(self.git('diff', '--cached', '--name-only'), '')  # the installer stages nothing
         self.assertIn('already exists', self.it('init', '--session', 'Demo', code=1).err)
         self.commit_all()
+        self.assertIn('Nothing changed', self.it('sync').out)
         self.assertEqual(self.git('status', '--porcelain'), '')
 
     def test_layout_c_puts_the_block_in_the_scaffold_agents_md(self):
@@ -235,6 +289,14 @@ class ToolingTests(unittest.TestCase):
         outside = self.it('skills', 'show', 'isabelle-setup', cwd=self.work)
         self.assertEqual(outside.stdout, self.blob(self.rev1, 'extension/skills/isabelle-setup/SKILL.md'))
         self.assertIn(f'at {self.rev1} (stable)', outside.err)
+        # Outside a project, every release's skills, marked when only one release installs them.
+        listed = self.it('skills', 'list', cwd=self.work).out.splitlines()
+        self.assertEqual([line.split(' [')[0] for line in listed[1:]], [*SKILLS, 'isabelle-pide-ai'])
+        self.assertIn('isabelle-setup [code, theory; Isabelle2025-2 only]: ', listed[1])
+        self.assertIn('isabelle-modeling [code]: ', listed[2])
+        self.assertIn('isabelle-pide-ai [code, theory; Isabelle2026 only]: ', listed[-1])
+        self.assertEqual(self.it('skills', 'show', 'isabelle-pide-ai', cwd=self.work).stdout,
+                         self.blob(self.rev1, 'extension/skills/isabelle-pide-ai/SKILL.md'))
         self.it('init', '--session', 'Demo', '--revision', 'next')
         # The runtime's HEAD and working tree differ from the pin; neither matters.
         (self.runtime / 'extension/skills/isabelle-setup/SKILL.md').write_text('uncommitted edit\n')
@@ -275,7 +337,49 @@ class ToolingTests(unittest.TestCase):
         (self.project / 'isabelle-tooling.conf').write_text(descriptor.replace('0' * 40, 'stable'))
         self.assertIn('full 40-hex commit', self.it('skills', 'show', 'isabelle-setup', code=1).err)
 
+    def test_project_root_from_another_directory(self):
+        elsewhere = self.work / 'elsewhere'
+        elsewhere.mkdir()
+        root = str(self.project)
+        self.it('init', '--session', 'Demo', '--project-root', root, cwd=elsewhere)
+        self.assertIn('[mcp_servers.iq]', self.read('.codex/config.toml'))
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.commit_all()
+        self.it('sync', '--check', '--project-root', root, cwd=elsewhere)
+        self.assertIn('Nothing changed', self.it('sync', '--project-root', root, cwd=elsewhere).out)
+        self.it('remove', '--project-root', root, cwd=elsewhere)
+        self.assertFalse((self.project / 'isabelle-tooling.conf').exists())
+
     # --- shared files ------------------------------------------------------------------------
+
+    def test_isabelle2026_opt_in_and_rollback_preserve_project_files(self):
+        self.it('init', '--session', 'Demo', '--kind', 'theory', '--isabelle-version', 'Isabelle2026')
+        self.assertIn('isabelle_version=Isabelle2026\n', self.read('isabelle-tooling.conf'))
+        self.assertEqual(set(json.loads(self.read('.mcp.json'))['mcpServers']), {'isabelle-pide-mcp'})
+        self.assertEqual(set(tomllib.loads(self.read('.codex/config.toml'))['mcp_servers']), {'isabelle-pide-mcp'})
+        self.assertEqual(self.skill_dirs(), (('isabelle-pide-ai',), ('isabelle-pide-ai',)))
+        self.assertFalse((self.project / '.codex/agents/ic2_prover.toml').exists())
+        self.assertIn('isabelle-pide-ai', self.it('skills', 'list').out)
+        self.assertIn('isabelle-pide-mcp', self.read('AGENTS.md'))
+        original_theory = self.read('formal/Demo/Demo.thy')
+        self.it('sync')
+        self.check()
+        report = self.doctor(env=dict(self.env, MOCK_ISABELLE_VERSION='Isabelle2026'))
+        self.assertIn('setup-pide-ai.sh', report)
+        self.assertNotIn('I/Q token', report)
+        self.assertNotIn('ic2 component', report)
+        self.commit_all()
+        self.it('update', 'stable', '--isabelle-version', 'Isabelle2025-2')
+        self.assertEqual(set(json.loads(self.read('.mcp.json'))['mcpServers']), {'iq'})
+        self.assertEqual(self.skill_dirs(), (THEORY_SKILLS, THEORY_SKILLS))
+        self.assertEqual(self.read('formal/Demo/Demo.thy'), original_theory)
+        self.commit_all()
+        self.it('update', 'stable', '--isabelle-version', 'Isabelle2026')
+        self.check()
+        self.commit_all()
+        self.it('remove')
+        self.assertFalse((self.project / '.mcp.json').exists())
+        self.assertEqual(self.read('formal/Demo/Demo.thy'), original_theory)
 
     def test_mcp_and_codex_configuration_are_merged_and_restored(self):
         mcp = {'mcpServers': {'other': {'command': 'other-server'}}, 'extra': [1, 2]}
@@ -326,6 +430,185 @@ class ToolingTests(unittest.TestCase):
         self.git('add', '-A')
         self.assertIn('edited owned block: .codex/config.toml', self.it('remove', code=1).err)
 
+    def test_unmanaged_collisions_and_edited_skills_and_blocks_refuse(self):
+        skill = self.project / '.agents/skills/isabelle-setup/SKILL.md'
+        skill.parent.mkdir(parents=True)
+        skill.write_text('our own setup notes\n')
+        (self.project / '.claude/agents').mkdir(parents=True)
+        (self.project / '.claude/agents/ic2-prover.md').write_text('our own worker\n')
+        self.commit_all()
+        before = self.state()
+        err = self.it('init', '--session', 'Demo', code=1).err
+        self.assertIn('nothing was changed', err)
+        self.assertIn('collision: .agents/skills/isabelle-setup exists and is not managed by isabelle-tooling', err)
+        self.assertIn('collision: .claude/agents/ic2-prover.md exists and is not managed by isabelle-tooling', err)
+        self.assertEqual(self.state(), before)
+        self.git('rm', '-rq', '.agents', '.claude')
+        self.it('init', '--session', 'Demo')
+        self.commit_all()
+        # An edited skill file: sync refuses, and check reports it.
+        skill.write_text(skill.read_text() + 'edited\n')
+        self.git('add', '-A')
+        self.assertIn('edited managed file: .agents/skills/isabelle-setup/SKILL.md', self.it('sync', code=1).err)
+        self.assertIn('edited managed file: .agents/skills/isabelle-setup/SKILL.md', self.check(1))
+        self.git('checkout', 'HEAD', '--', '.')
+        # A file added to a managed skill directory.
+        stray = skill.parent / 'stray.md'
+        stray.write_text('stray\n')
+        self.git('add', '-A')
+        self.assertIn('unmanaged file in the managed directory .agents/skills/isabelle-setup: '
+                      '.agents/skills/isabelle-setup/stray.md', self.it('sync', code=1).err)
+        self.git('rm', '-q', '--cached', '.agents/skills/isabelle-setup/stray.md')
+        stray.unlink()
+        # An edited root instruction block.
+        (self.project / 'AGENTS.md').write_text(self.read('AGENTS.md').replace('read\n', 'always read\n'))
+        self.git('add', '-A')
+        self.assertIn('edited owned block: AGENTS.md', self.it('update', 'next', code=1).err)
+        self.assertIn('edited owned block: AGENTS.md', self.check(1))
+        self.git('checkout', 'HEAD', '--', '.')
+        self.check()
+
+    def test_root_instruction_files(self):
+        # Distinct regular AGENTS.md and CLAUDE.md: each gets the block, and remove gives both back.
+        (self.project / 'AGENTS.md').write_text('# Project\n\nOur rules.\n')
+        (self.project / 'CLAUDE.md').write_text('Claude-only notes.\n')
+        self.commit_all()
+        self.it('init', '--session', 'Demo')
+        agents, claude = self.read('AGENTS.md'), self.read('CLAUDE.md')
+        self.assertTrue(agents.startswith('# Project\n\nOur rules.\n\n<!-- BEGIN isabelle-tooling -->\n'), agents)
+        self.assertTrue(claude.startswith('Claude-only notes.\n\n<!-- BEGIN isabelle-tooling -->\n'), claude)
+        self.assertEqual(agents.split('\n\n', 2)[2], claude.split('\n\n', 1)[1])
+        self.assertFalse(os.path.islink(self.project / 'CLAUDE.md'))
+        blocks = json.loads(self.read('.isabelle-tooling/inventory.json'))['blocks']
+        self.assertEqual([b['file'] for b in blocks if b['syntax'] == 'markdown'], ['AGENTS.md', 'CLAUDE.md'])
+        self.check()
+        self.commit_all()
+        self.it('remove')
+        self.assertEqual(self.read('AGENTS.md'), '# Project\n\nOur rules.\n')
+        self.assertEqual(self.read('CLAUDE.md'), 'Claude-only notes.\n')
+        for gone in ('isabelle-tooling.conf', '.isabelle-tooling', '.agents', '.claude', '.codex', '.mcp.json'):
+            self.assertFalse(os.path.lexists(self.project / gone), gone)
+        # CLAUDE.md alone: it gets the block, and a regular AGENTS.md is created beside it.
+        self.fresh_project('claude-only')
+        (self.project / 'CLAUDE.md').write_text('only Claude\n')
+        self.commit_all()
+        self.it('init', '--session', 'Demo')
+        self.assertTrue(self.read('CLAUDE.md').startswith('only Claude\n\n<!-- BEGIN isabelle-tooling -->\n'))
+        self.assertTrue(self.read('AGENTS.md').startswith('<!-- BEGIN isabelle-tooling -->\n'))
+        self.assertFalse(os.path.islink(self.project / 'AGENTS.md'))
+        self.check()
+        # AGENTS.md alone: it gets the block and a CLAUDE.md symlink, which remove leaves in place.
+        self.fresh_project('agents-only')
+        (self.project / 'AGENTS.md').write_text('rules\n')
+        self.commit_all()
+        self.it('init', '--session', 'Demo')
+        self.assertEqual(os.readlink(self.project / 'CLAUDE.md'), 'AGENTS.md')
+        self.check()
+        err = self.it('remove', code=1).err  # the new files are not staged yet
+        self.assertIn('nothing was changed', err)
+        self.assertIn('.isabelle-tooling/inventory.json is untracked', err)
+        self.commit_all()
+        self.it('remove')
+        self.assertEqual(self.read('AGENTS.md'), 'rules\n')
+        self.assertEqual(os.readlink(self.project / 'CLAUDE.md'), 'AGENTS.md')
+
+    def test_owned_array_elements_and_executable_files(self):
+        self.git_in(self.runtime, 'checkout', '-q', 'extras')
+        mine = json.loads((self.runtime / 'extras/session-hook.json').read_text())
+        ours = {'hooks': {'SessionStart': [{'hooks': [{'type': 'command', 'command': 'our-hook'}]}]}, 'model': 'x'}
+        original = json.dumps(ours, indent=2) + '\n'
+        settings, hook = self.project / '.claude/settings.json', self.project / 'bin/session-hook.sh'
+        settings.parent.mkdir()
+        settings.write_text(original)
+        self.commit_all()
+        # The element joins the project's own array, and the file is executable.
+        self.it('init', '--session', 'Demo', '--revision', 'extras')
+        data = json.loads(settings.read_text())
+        self.assertEqual(data['hooks']['SessionStart'], ours['hooks']['SessionStart'] + [mine])
+        self.assertEqual(data['model'], 'x')
+        self.assertTrue(os.access(hook, os.X_OK))
+        self.check()
+        self.commit_all()
+        # An edited, a missing and a duplicated element; a cleared executable bit.
+        entry = '.claude/settings.json /hooks/SessionStart'
+        duplicated = '2 elements of /hooks/SessionStart carry bin/session-hook.sh'
+        for change, says in ((lambda a: a[-1].update(timeout=5), f'edited owned entry: {entry}'),
+                             (lambda a: a.pop(), f'missing owned entry: {entry}'),
+                             (lambda a: a.append(dict(a[-1])), duplicated)):
+            changed = json.loads(settings.read_text())
+            change(changed['hooks']['SessionStart'])
+            settings.write_text(json.dumps(changed))
+            self.git('add', '-A')
+            with self.subTest(says=says):
+                self.assertIn(says, self.check(1))
+                self.assertIn(says, self.it('sync', code=1).err)
+            self.git('checkout', 'HEAD', '--', '.')
+        hook.chmod(0o644)
+        self.git('add', '-A')
+        self.assertIn('edited managed file: bin/session-hook.sh', self.check(1))
+        self.git('checkout', 'HEAD', '--', '.')
+        self.check()
+        # Remove gives the project's own array back, byte for byte.
+        self.it('remove')
+        self.assertEqual(settings.read_text(), original)
+        self.assertFalse(os.path.lexists(self.project / 'bin'))
+        # Without a settings file: an unmanaged element carrying the marker collides; init creates the file,
+        # and remove deletes it again.
+        self.fresh_project('no-settings')
+        settings = self.project / '.claude/settings.json'
+        settings.parent.mkdir()
+        settings.write_text(json.dumps({'hooks': {'SessionStart': [mine]}}))
+        self.commit_all()
+        self.assertIn('collision: .claude/settings.json /hooks/SessionStart already has an entry not managed by',
+                      self.it('init', '--session', 'Demo', '--revision', 'extras', code=1).err)
+        self.git('rm', '-q', '.claude/settings.json')
+        self.it('init', '--session', 'Demo', '--revision', 'extras')
+        self.assertEqual(json.loads(settings.read_text()), {'hooks': {'SessionStart': [mine]}})
+        self.check()
+        self.commit_all()
+        self.it('remove')
+        self.assertFalse(os.path.lexists(settings))
+
+    # --- preflight ----------------------------------------------------------------------------
+
+    def test_preflight_uses_the_index(self):
+        (self.project / 'AGENTS.md').write_text('rules\n')
+        self.commit_all()
+        (self.project / '.mcp.json').write_text('{}\n')
+        before = self.state()
+        err = self.it('init', '--session', 'Demo', code=1).err
+        self.assertIn('.mcp.json is untracked; stage or remove it first', err)
+        self.assertIn('nothing was changed', err)
+        self.assertEqual(self.state(), before)
+        (self.project / '.mcp.json').unlink()
+        (self.project / '.gitignore').write_text('.isabelle-tooling/\n')
+        self.commit_all()
+        before = self.state()
+        err = self.it('init', '--session', 'Demo', code=1).err
+        self.assertIn('.isabelle-tooling/inventory.json is ignored by Git', err)
+        self.assertEqual(self.state(), before)
+        self.git('rm', '-q', '.gitignore')
+        (self.project / 'AGENTS.md').write_text('rules, edited\n')
+        self.assertIn('AGENTS.md has unstaged changes', self.it('init', '--session', 'Demo', code=1).err)
+        self.git('add', 'AGENTS.md')  # staged changes are accepted
+        self.it('init', '--session', 'Demo')
+        self.assertTrue(self.read('AGENTS.md').startswith('rules, edited\n\n<!-- BEGIN isabelle-tooling -->\n'))
+        self.check()
+
+    def test_a_skill_parent_symlinked_outside_the_checkout_is_refused(self):
+        outside = self.work / 'elsewhere'
+        outside.mkdir()
+        for parent in ('.agents', '.claude/skills'):
+            link = self.project / parent
+            link.parent.mkdir(exist_ok=True)
+            os.symlink(outside, link)
+            self.commit_all()
+            err = self.it('init', '--session', 'Demo', code=1).err
+            self.assertIn(f'{parent} is a symlink resolving outside the checkout', err)
+            self.assertEqual(os.listdir(outside), [])
+            self.assertFalse((self.project / 'isabelle-tooling.conf').exists())
+            self.git('rm', '-q', parent)
+
     # --- revisions and adoption --------------------------------------------------------------
 
     def test_sync_keeps_the_pin_and_update_installs_whole_skill_directories(self):
@@ -344,6 +627,43 @@ class ToolingTests(unittest.TestCase):
         self.git_in(self.runtime, 'checkout', '-q', 'main')
         self.it('update', 'stable')
         self.assertFalse((self.project / '.agents/skills/isabelle-proving/references').exists())
+        self.check()
+
+    def test_malformed_descriptors_and_missing_pins_refuse(self):
+        self.it('init', '--session', 'Demo')
+        self.commit_all()
+        descriptor = self.project / 'isabelle-tooling.conf'
+        good = descriptor.read_text()
+        before = snapshot(self.project)
+        for text, says, code in ((good.replace(self.rev1, 'abc'), 'tooling_revision must be a full 40-hex commit', 1),
+                                 (good + 'extra=1\n', 'unknown key: extra', 1),
+                                 (good.replace(self.rev1, '0' * 40), f'the pinned commit {"0" * 40} is missing from', 2)):
+            with self.subTest(says=says):
+                descriptor.write_text(text)
+                self.assertIn(says, self.check(1))
+                self.assertIn(says, self.it('sync', code=code).err)
+        descriptor.write_text(good)
+        self.assertEqual({k: v[:3] for k, v in snapshot(self.project).items()}, {k: v[:3] for k, v in before.items()})
+        self.check()
+
+    def test_a_revision_without_a_manifest_cannot_be_installed(self):
+        self.git_in(self.runtime, 'checkout', '-q', '--detach', 'stable')
+        self.git_in(self.runtime, 'rm', '-q', 'extension/project/manifest.json')
+        self.git_in(self.runtime, 'commit', '-qm', 'no manifest')
+        bare = self.git_in(self.runtime, 'rev-parse', 'HEAD').strip()
+        self.git_in(self.runtime, 'checkout', '-q', 'main')
+        err = self.it('init', '--session', 'Demo', '--revision', bare, code=2).err
+        self.assertIn(f'{bare} has no extension/project/manifest.json; that revision cannot be installed', err)
+        self.assertEqual(os.listdir(self.project), ['.git'])
+        err = self.it('init', '--session', 'Demo', '--revision', 'no-such-ref', code=2).err
+        self.assertIn('no-such-ref does not name a commit', err)
+        self.assertEqual(os.listdir(self.project), ['.git'])
+        self.it('init', '--session', 'Demo')
+        self.commit_all()
+        before = snapshot(self.project)
+        self.assertIn('that revision cannot be installed', self.it('update', bare, code=2).err)
+        self.assertIn('does not name a commit', self.it('update', 'no-such-ref', code=2).err)
+        self.assertEqual(snapshot(self.project), before)
         self.check()
 
     def adopt_fixture(self):
@@ -398,6 +718,8 @@ class ToolingTests(unittest.TestCase):
         self.assertEqual(self.read('.claude/skills/isabelle-modeling/SKILL.md'), 'an unmistakable development edit\n')
         self.assertIn('[FAIL] link mode', self.check(1))
         self.assertIn('[NOTE] link mode', self.it('sync', '--check', '--allow-dirty').out)
+        self.assertIn('the skills are in link mode; run `isabelle-tooling sync` first',
+                      self.it('update', 'next', code=1).err)
         self.it('sync')
         self.assertEqual(self.git('status', '--porcelain'), '')
         self.check()
@@ -510,13 +832,13 @@ class ToolingTests(unittest.TestCase):
 
     def test_switching_a_project_between_kinds(self):
         self.it('init', '--session', 'Demo')
-        # agent-board's files beside the tooling's: never touched by a switch.
-        board_skill = self.project / '.agents/skills/agent-coordination/SKILL.md'
-        board_skill.parent.mkdir()
-        board_skill.write_text('the board skill\n')
-        os.symlink('../../.agents/skills/agent-coordination', self.project / '.claude/skills/agent-coordination')
+        # Project-owned files beside the tooling's: never touched by a switch.
+        local_skill = self.project / '.agents/skills/custom-workflow/SKILL.md'
+        local_skill.parent.mkdir()
+        local_skill.write_text('a project skill\n')
+        os.symlink('../../.agents/skills/custom-workflow', self.project / '.claude/skills/custom-workflow')
         with open(self.project / 'AGENTS.md', 'a') as agents:
-            agents.write('\n<!-- BEGIN agent-board -->\nthe board block\n<!-- END agent-board -->\n')
+            agents.write('\n<!-- BEGIN custom-workflow -->\na project instruction block\n<!-- END custom-workflow -->\n')
         self.commit_all()
         before = snapshot(self.project)
         # Code to theory, by the README's steps; the hand edits are left unstaged.
@@ -538,7 +860,7 @@ class ToolingTests(unittest.TestCase):
         for name in CODE_ONLY:
             self.assertIn(f'.agents/skills/{name}/SKILL.md', out)
             self.assertIn(f'.claude/skills/{name}', out)
-        self.assertEqual(self.skill_dirs(), (('agent-coordination',) + THEORY_SKILLS,) * 2)
+        self.assertEqual(self.skill_dirs(), (('custom-workflow',) + THEORY_SKILLS,) * 2)
         self.check()
         after = snapshot(self.project)
         changed = {rel for rel in before.keys() | after.keys() if before.get(rel, ())[:3] != after.get(rel, ())[:3]}
@@ -546,14 +868,14 @@ class ToolingTests(unittest.TestCase):
                                                  for base in ('.agents/skills', '.claude/skills')
                                                  for name in CODE_ONLY)}
         self.assertEqual(changed - removed, edited | {'.isabelle-tooling/inventory.json'})
-        self.assertEqual(board_skill.read_text(), 'the board skill\n')
-        self.assertIn('<!-- BEGIN agent-board -->\nthe board block\n', self.read('AGENTS.md'))
+        self.assertEqual(local_skill.read_text(), 'a project skill\n')
+        self.assertIn('<!-- BEGIN custom-workflow -->\na project instruction block\n', self.read('AGENTS.md'))
         self.commit_all()
         self.assertEqual(self.git('status', '--porcelain'), '')
         # And back to code: the three skills return.
         self.set_kind(None)
         self.it('sync')
-        self.assertEqual(self.skill_dirs(), (('agent-coordination',) + tuple(sorted(SKILLS)),) * 2)
+        self.assertEqual(self.skill_dirs(), (('custom-workflow',) + tuple(sorted(SKILLS)),) * 2)
         self.check()
 
     def test_switching_kinds_through_update(self):
@@ -679,26 +1001,35 @@ class ToolingTests(unittest.TestCase):
 
     # --- failures ---------------------------------------------------------------------------
 
-    def test_failure_after_each_step_of_init_including_the_scaffold(self):
-        (self.project / 'AGENTS.md').write_text('rules\n')
-        (self.project / '.mcp.json').write_text('{"mcpServers": {}}\n')
-        self.commit_all()
+    def failure_loop(self, args, finished_code=0):
+        """Inject a failure after each publication step of ARGS in turn, on copies of the project.
+
+        Each time, `sync --check` fails without reporting that the project files match and reads
+        differently from the finished tree, the printed commands restore the tree and the index,
+        and a rerun then succeeds and checks with FINISHED_CODE. Return the number of steps."""
         template = self.work / 'template'
+        shutil.rmtree(template, ignore_errors=True)
         shutil.copytree(self.project, template, symlinks=True)
-        args = ['init', '--session', 'Demo']
         checks = []
         for limit in range(1, 200):
             shutil.rmtree(self.project)
             shutil.copytree(template, self.project, symlinks=True)
             before = snapshot(self.project)
+            status = self.git('status', '--porcelain', '--ignored', '--untracked-files=all')
             result = subprocess.run(['python3', '-c', DRIVER, str(self.runtime / 'scripts'), str(limit), *args],
                                     cwd=self.project, env=self.env, capture_output=True, text=True, timeout=120)
             if result.returncode == 0:
-                self.assertEqual(checks[:-1], [1] * (limit - 2))
-                self.assertGreater(limit, 20)
-                return
+                # Only a failure after the last step, the descriptor, leaves a tree that checks as finished.
+                *partial, finished = checks
+                self.assertEqual(finished.returncode, finished_code, finished.out)
+                for step, partial_check in enumerate(partial, 1):
+                    self.assertEqual(partial_check.returncode, 1, f'step {step}: {partial_check.out}')
+                    self.assertNotIn('project files match', partial_check.out, f'step {step}')
+                    self.assertNotEqual(partial_check.out, finished.out, f'step {step} checks as finished')
+                return limit - 1
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-            checks.append(self.it('sync', '--check', code=None).returncode)
+            self.assertIn(f'injected failure after step {limit}', result.stderr)
+            checks.append(self.it('sync', '--check', code=None))
             lines = result.stderr.splitlines()
             start = next(i for i, line in enumerate(lines) if line.startswith('Restore them from'))
             commands = []
@@ -708,22 +1039,50 @@ class ToolingTests(unittest.TestCase):
                 commands.append(line.strip())
             subprocess.run(['bash', '-ec', '\n'.join(commands)], cwd=self.project, env=self.env, check=True)
             self.assertEqual({k: v[:3] for k, v in snapshot(self.project).items()},
-                             {k: v[:3] for k, v in before.items()}, f'step {limit}')
+                             {k: v[:3] for k, v in before.items()}, f'step {limit}: {commands}')
+            self.assertEqual(self.git('status', '--porcelain', '--ignored', '--untracked-files=all'), status)
             self.it(*args)
-            self.check()
-        self.fail('init never completed')
+            self.check(finished_code)
+        self.fail(f'{args[0]} never completed')
+
+    def test_failure_after_each_step_of_init_including_the_scaffold(self):
+        (self.project / 'AGENTS.md').write_text('rules\n')
+        (self.project / '.mcp.json').write_text('{"mcpServers": {}}\n')
+        self.commit_all()
+        self.assertGreaterEqual(self.failure_loop(['init', '--session', 'Demo']), 20)
+
+    def test_failure_after_each_step_of_update_and_remove(self):
+        self.it('init', '--session', 'Demo')
+        self.commit_all()
+        # The runtime at the target, so that the finished update checks.
+        self.git_in(self.runtime, 'checkout', '-q', 'next')
+        self.assertGreaterEqual(self.failure_loop(['update', 'next']), 4)
+        self.assertIn(f'tooling_revision={self.rev2}\n', self.read('isabelle-tooling.conf'))
+        self.commit_all()
+        self.assertGreaterEqual(self.failure_loop(['remove'], finished_code=1), 15)
+        self.assertFalse((self.project / 'isabelle-tooling.conf').exists())
+        self.assertTrue((self.project / 'formal/Demo/Demo.thy').is_file())
 
     def test_two_installers_and_another_filesystem(self):
         import fcntl
         import time
         lock = Path(self.git('rev-parse', '--path-format=absolute', '--git-path', 'project-files.lock').strip())
+        logs = [self.work / f'installer-{i}.err' for i in range(2)]
         with open(lock, 'w') as held:
             fcntl.flock(held, fcntl.LOCK_EX)
-            runs = [subprocess.Popen([str(self.cli), 'init', '--session', 'Demo'], cwd=self.project, env=self.env,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(2)]
-            time.sleep(0.5)
+            runs = []
+            for log in logs:
+                with open(log, 'w') as err:
+                    runs.append(subprocess.Popen([str(self.cli), 'init', '--session', 'Demo'], cwd=self.project,
+                                                 env=self.env, stdout=subprocess.DEVNULL, stderr=err))
+            deadline = time.monotonic() + 60
+            while not all('waiting for another installer in this worktree' in log.read_text() for log in logs):
+                self.assertEqual([r.poll() for r in runs], [None, None], [log.read_text() for log in logs])
+                self.assertLess(time.monotonic(), deadline, 'the installers never reached the lock')
+                time.sleep(0.05)
             self.assertEqual([r.poll() for r in runs], [None, None])
-        self.assertEqual(sorted(r.communicate(timeout=120) and r.returncode for r in runs), [0, 1])
+            self.assertEqual(os.listdir(self.project), ['.git'])  # neither wrote while it waited
+        self.assertEqual(sorted(r.wait(timeout=120) for r in runs), [0, 1])
         self.check()
         shm = Path('/dev/shm')
         if shm.is_dir() and os.stat(shm).st_dev != os.stat(self.project).st_dev:
@@ -746,7 +1105,6 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('[OK]   Host configuration: no Isabelle plugin, marketplace', clean)
         self.assertIn('[OK]   Project files: the isabelle-tooling project files match', clean)
         self.assertIn('[OK]   ISABELLE_TOOLING_ROOT names this tooling checkout', clean)
-        self.assertIn('No agent-board.conf', clean)
         claude, codex = self.work / 'claude-config', self.work / 'codex-home'
         (claude / 'plugins').mkdir(parents=True)
         (claude / 'agents').mkdir()
@@ -780,53 +1138,25 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('[FAIL] ISABELLE_TOOLING_ROOT is not set',
                       self.doctor(env={k: v for k, v in self.env.items() if k != 'ISABELLE_TOOLING_ROOT'}))
 
+    def test_doctor_wrong_release_hints_follow_the_lookup_order(self):
+        # Isabelle2025-2 projects take `isabelle` from PATH first; Isabelle2026 ones read their variable first.
+        self.it('init', '--session', 'Demo')
+        report = self.doctor(env=dict(self.env, MOCK_ISABELLE_VERSION='Isabelle2026'))
+        self.assertIn('Expected Isabelle2025-2, found Isabelle2026 at ', report)
+        self.assertIn('Put the bin/ of Isabelle2025-2 first on PATH; ISABELLE_TOOLING_ISABELLE is read only when '
+                      'no isabelle is on PATH.', report)
+        self.fresh_project('pide')
+        self.it('init', '--session', 'Demo', '--isabelle-version', 'Isabelle2026')
+        report = self.doctor()
+        self.assertIn('Expected Isabelle2026, found Isabelle2025-2 at ', report)
+        self.assertIn('Set ISABELLE_TOOLING_ISABELLE2026 to its installation directory or executable.', report)
+
     def test_doctor_isabelle_home_too_long_for_ic2(self):
         self.it('init', '--session', 'Demo')
         self.assertNotIn('too long for ic2', self.doctor())
         deep = self.base / ('d' * 60) / 'mock'
         out = self.doctor(env=dict(self.env, MOCK_ISABELLE_STATE_DIR=str(deep)))
         self.assertRegex(out, r'\[FAIL\] ISABELLE_HOME_USER \(.*\) is too long for ic2: server sockets there reach \d+ bytes')
-
-    def board_stub(self, version, doctor_output, doctor_code=0):
-        stub = self.work / 'agent-board-stub'
-        stub.write_text(textwrap.dedent(f'''\
-            #!/usr/bin/env bash
-            printf '%s\n' "$*" >>"{self.work}/board-calls"
-            case "$1" in
-              version) printf '%s\\n' {json.dumps(json.dumps(version))} ;;
-              doctor) printf '%s\\n' {json.dumps(doctor_output)}; exit {doctor_code} ;;
-            esac
-            '''))
-        stub.chmod(0o755)
-        return dict(self.env, AGENT_BOARD_COMMAND=str(stub))
-
-    def test_doctor_board_adapter(self):
-        self.it('init', '--session', 'Demo')
-        (self.project / 'agent-board.conf').write_text('format_version=1\n')
-        good = dict(interface=1, state_format=2, capabilities=['bounded-digest', 'doctor', 'project'])
-        report = json.dumps(dict(interface=1, ok=False, checks=[
-            dict(id='files', status='ok', message='match'), dict(id='guard.pre-commit', status='fail',
-                                                                 message='no guard\nat all')]))
-        out = self.doctor(env=self.board_stub(good, report, 1))
-        self.assertEqual((self.work / 'board-calls').read_text(),
-                         f'version --json\ndoctor --json --project-root {self.project}\n')
-        self.doctor('--allow-dirty', env=self.board_stub(good, report, 1))
-        self.assertTrue((self.work / 'board-calls').read_text().endswith(
-            f'doctor --json --project-root {self.project} --allow-dirty\n'))
-        self.assertIn('[OK]   board: files: match', out)
-        self.assertIn('[FAIL] board: guard.pre-commit: no guard at all', out)
-        out = self.doctor(env=self.board_stub(dict(good, interface=2), report))
-        self.assertIn('[FAIL] board: ', out)
-        self.assertIn('has interface 2; this tooling supports interface 1', out)
-        out = self.doctor(env=self.board_stub(dict(good, capabilities=['doctor']), report))
-        self.assertIn('lacks the capabilities: project', out)
-        self.assertIn('doctor could not run (exit 2)', self.doctor(env=self.board_stub(good, report, 2)))
-        self.assertIn('doctor could not run (exit 0)', self.doctor(env=self.board_stub(good, 'not json')))
-        env = dict(self.env, AGENT_BOARD_COMMAND='')
-        env['PATH'] = f"{self.base / 'bin'}:/usr/bin:/bin"
-        self.assertIn('agent-board does not resolve', self.doctor(env=env))
-        (self.project / 'agent-board.conf').unlink()
-        self.assertIn('No agent-board.conf', self.doctor(env=self.board_stub(good, report)))
 
     def test_doctor_is_read_only(self):
         self.it('init', '--session', 'Demo')
@@ -845,10 +1175,7 @@ class ToolingTests(unittest.TestCase):
 
 
 class KindTests(unittest.TestCase):
-    """The shared module's project kinds, through a fake spec on a scratch runtime.
-
-    agent-board's suite has the same tests; neither component names a kind
-    in these manifests."""
+    """Exercise project kinds through a fake spec on a scratch runtime."""
 
     @classmethod
     def setUpClass(cls):
@@ -951,9 +1278,7 @@ class KindTests(unittest.TestCase):
 
 
 class KeyValueTests(unittest.TestCase):
-    """The shared descriptor format, read as a shell `read` loop reads it: lines end at LF alone.
-
-    agent-board's suite has the same tests."""
+    """Check that descriptors split at LF alone, like the shell parser."""
 
     @classmethod
     def setUpClass(cls):

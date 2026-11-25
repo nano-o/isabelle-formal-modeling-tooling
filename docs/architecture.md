@@ -2,9 +2,15 @@
 
 ## Components
 
-The host owns everything: the Isabelle2025-2 installation, the project Git
+For the default workflow, the host owns the Isabelle2025-2 installation, the project Git
 worktrees, the agent, Isabelle/jEdit for human review, and this tooling clone
 with its AutoCorrode submodule, I/R Python environment, and built ic2 JAR.
+
+Projects can opt in to Isabelle2026 in their descriptor. The managed agent
+configuration then launches PIDE AI over stdio for that checkout. The launcher
+loads the project's session requirements, leaving its theories editable.
+Setup keeps the pinned PIDE AI source and JARs under `.pide-ai/` in the
+tooling clone and registers the component in the Isabelle2026 user home.
 
 The earlier containerized design (in this repository's history and in the
 project that extracted it) is gone from the core workflow; isolation is
@@ -88,15 +94,4 @@ both hosts and a block in the root instruction files. An inventory in
 `.isabelle-tooling/` records what was installed, so `sync --check` and
 doctor detect drift and partial installs. The code those files call still
 runs from the one tooling clone that `ISABELLE_TOOLING_ROOT` names, which
-must be at the project's pin. The installer rules are shared with
-agent-board through identical copies of `scripts/project_files.py`.
-
-## Coordination
-
-Coordination between agents is agent-board, a separate repository. The
-tooling's only part is optional: when `agent-board.conf` is at the checkout
-root and the executable resolves, `ic2.sh` posts server notes through it
-under a five-second timeout, the proving skill and worker profiles name
-the proof resources to claim and the two delegation modes, and doctor
-checks the board's interface and runs its read-only doctor. The tooling
-never reads the board's descriptor or storage.
+must be at the project's pin.

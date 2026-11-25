@@ -36,6 +36,7 @@ Options:
   --max-heap SIZE     ic2 prover memory bound (default: 12G)
   --kind KIND         code (default) or theory: a project with no implementation
   -h, --help          Show this help
+  --isabelle-version VERSION  Isabelle2025-2 (default) or Isabelle2026 (PIDE AI)
 
 Renders into DIR:
   isabelle-tooling.conf
@@ -55,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --project-name) require_value "$1" "${2:-}"; PROJECT_NAME="$2"; shift 2 ;;
     --max-heap) require_value "$1" "${2:-}"; MAX_HEAP="$2"; shift 2 ;;
     --kind) require_value "$1" "${2:-}"; KIND="$2"; shift 2 ;;
+    --isabelle-version) require_value "$1" "${2:-}"; ISABELLE_VERSION="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
@@ -77,6 +79,10 @@ heap_to_megabytes "$MAX_HEAP" >/dev/null || die "--max-heap: cannot parse: $MAX_
 descriptor_kind_known "$KIND" || die "--kind must be one of: ${DESCRIPTOR_KINDS[*]}"
 git -C "$TOOLING_ROOT" cat-file -e "$REVISION^{commit}" 2>/dev/null ||
   die "$REVISION is not a commit in $TOOLING_ROOT"
+case "$ISABELLE_VERSION" in
+  Isabelle2025-2|Isabelle2026) ;;
+  *) die "unsupported Isabelle release: $ISABELLE_VERSION" ;;
+esac
 case "$KIND" in
   code) templates="" ;;
   theory)

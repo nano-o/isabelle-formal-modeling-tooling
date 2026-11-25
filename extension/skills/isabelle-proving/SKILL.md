@@ -12,7 +12,8 @@ worktree.
   jEdit open on the theory. Agents read and edit theory buffers only through
   the I/Q MCP server (`iq`) and iterate in its I/R REPL. Never write a theory
   file on disk there: jEdit owns the buffers and a disk write desynchronizes
-  them.
+  them. The jEdit session is the human's: edit through I/Q only when the
+  invoker has given it to you, and never while another agent edits there.
 - **ic2 in an ic2 worktree**, a dedicated worktree marked as one when it was
   created. No jEdit owns the files, so theories are edited directly on disk
   and checked through a native ic2 server that the worktree owns. This is the
@@ -314,31 +315,9 @@ the jEdit worktree first and
 asks which committed state to use if relevant uncommitted changes make the
 base ambiguous (never stash, copy, or discard them), and delegates to the
 `ic2-prover` worker with an absolute worktree path, the exact proof target,
-the edit scope, and commit authority. The coordinator does not edit the
-delegated worktree concurrently, reviews the diff and validation report on
-return, verifies the worker stopped its server, and reports worktree path,
-branch, and commit. It never merges, cherry-picks, or removes the worktree or
+the edit scope, commit authority, and any check-in boundary. The coordinator
+does not edit the delegated worktree while the worker runs, reviews the diff
+and validation report on return, verifies the worker stopped its server, and
+reports the worktree path, branch, and commit. It never merges, cherry-picks, or removes the worktree or
 branch unless asked. Worktrees no longer need a submodule populated: the
-tooling and AutoCorrode live in the tooling clone. When the checkout uses
-agent-board (`agent-board.conf` at its root; the `agent-coordination`
-skill, whose `references/delegation.md` has the procedure), choose the
-worker's mode and state it on the brief's first line, `Mode: independent.
-Handle: HANDLE.` or `Mode: supervised by HANDLE.`; a brief without one makes
-an independent worker. The proof resources on the board are theory files,
-proof branches (`refs/heads/<branch>`) and `token:jedit`, the human's I/Q
-editing session in the jEdit worktree, which an agent claims before editing
-through I/Q there.
-
-- **Independent**, the usual mode for an autonomous proof job: the
-  coordinator registers with `hello`, creates the branch and worktree, and
-  releases any setup claim. The worker claims its branch and theories under
-  its own handle, commits when the brief authorizes it, and posts its
-  handoff before releasing its claims with `bye`. For an authorized
-  integration, the coordinator claims the destination branch under its own
-  handle and guards the affected paths and refs before moving it.
-- **Supervised**: the coordinator claims the worker's theories and branch
-  before launching it and keeps them until the worker has stopped. The
-  worker makes no board calls, commits, or ref or index changes; the
-  coordinator reviews its report and commits in its worktree as
-  `AGENT_BOARD_AGENT=<coordinator> git -C <worktree> commit ...`. ic2's own
-  start and stop notes are allowed in either mode.
+tooling and AutoCorrode live in the tooling clone.

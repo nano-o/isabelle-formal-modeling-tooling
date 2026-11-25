@@ -1,17 +1,9 @@
-"""Project files: the installer rules that agent-board and the Isabelle tooling share.
+"""Install and verify managed files in project checkouts.
 
-This implements the "Shared rules" of the project-integration contracts
-(agent-board's docs/project-integration.md, the Isabelle tooling's
-docs/delivery-contracts.md): descriptors and the inventory, owned JSON
-entries, TOML and Markdown blocks, root instruction files, skill
-directories and the project kinds that select them, link mode, the
-installer lock, index-based preflight, and publication that prints restore
-commands when a write fails.
-
-Both repositories keep an identical copy of this file, agent-board as
-src/project_files.py and the tooling as scripts/project_files.py; change
-both together. Standard library only, Python 3.9 or later; TOML blocks need
-Python 3.11 for tomllib.
+The delivery contracts in docs/delivery-contracts.md cover descriptors,
+inventories, owned configuration entries and blocks, skill directories,
+preflight, and publication. Standard library only, Python 3.9 or later;
+TOML blocks need Python 3.11 for tomllib.
 """
 from contextlib import contextmanager
 import copy
@@ -214,14 +206,15 @@ class Desired:
 
 def desired_state(spec, revision, values, mode='copy', link_source=None, shared=False):
     runtime = spec.runtime
+    manifest_path = spec.manifest_for(values) if hasattr(spec, 'manifest_for') else spec.manifest
     try:
-        manifest = json.loads(runtime.blob(revision, spec.manifest))
+        manifest = json.loads(runtime.blob(revision, manifest_path))
     except Broken:
-        raise Broken(f'{revision} has no {spec.manifest}; that revision cannot be installed') from None
+        raise Broken(f'{revision} has no {manifest_path}; that revision cannot be installed') from None
     except ValueError as exc:
-        raise Broken(f'{spec.manifest} at {revision} is not valid JSON: {exc}') from None
+        raise Broken(f'{manifest_path} at {revision} is not valid JSON: {exc}') from None
     if not isinstance(manifest, dict) or manifest.get('format') != FORMAT or manifest.get('component') != spec.name:
-        raise Broken(f'{spec.manifest} at {revision} is not a format-{FORMAT} {spec.name} manifest')
+        raise Broken(f'{manifest_path} at {revision} is not a format-{FORMAT} {spec.name} manifest')
     kind = project_kind(spec, revision, values, manifest)
     substitutions = spec.substitutions(values)
     desired = Desired(revision, mode, link_source, shared)
@@ -852,7 +845,7 @@ def preflight(tree, plan, exempt=()):
 
 @contextmanager
 def installer_lock(root):
-    """Serialize the writing verbs of both components in this worktree."""
+    """Serialize the writing verbs (init, sync, update, remove) in this worktree."""
     path = git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'project-files.lock').stdout.decode().strip()
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
     try:
@@ -1137,7 +1130,7 @@ def sync(root, spec, link=False, source=None):
         return execute(tree, spec, 'sync', plan, exempt, link_mode=link)
 
 
-def update(root, spec, target):
+def update(root, spec, target, *, descriptor_changes=()):
     tree = Tree(root)
     with installer_lock(tree.root):
         text, _ = read_descriptor(tree, spec)
@@ -1146,6 +1139,8 @@ def update(root, spec, target):
             raise Refused(f'{spec.command} update: the skills are in link mode; run `{spec.command} sync` first')
         revision = spec.runtime.commit(target)
         text = set_key(text, spec.revision_key, revision)
+        for key, value in descriptor_changes:
+            text = set_key(text, key, value)
         values = spec.read_descriptor(text)
         shared = inventory.get('claude_skills') == 'shared' if inventory else claude_shared(tree)
         desired = desired_state(spec, revision, values, shared=shared)

@@ -1,17 +1,9 @@
-"""Project files: the installer rules that agent-board and the Isabelle tooling share.
+"""Install and verify managed files in project checkouts.
 
-This implements the "Shared rules" of the project-integration contracts
-(agent-board's docs/project-integration.md, the Isabelle tooling's
-docs/delivery-contracts.md): descriptors and the inventory, owned JSON
-entries, TOML and Markdown blocks, root instruction files, skill
-directories and the project kinds that select them, link mode, the
-installer lock, index-based preflight, and publication that prints restore
-commands when a write fails.
-
-Both repositories keep an identical copy of this file, agent-board as
-src/project_files.py and the tooling as scripts/project_files.py; change
-both together. Standard library only, Python 3.9 or later; TOML blocks need
-Python 3.11 for tomllib.
+The delivery contracts in docs/delivery-contracts.md cover descriptors,
+inventories, owned configuration entries and blocks, skill directories,
+preflight, and publication. Standard library only, Python 3.9 or later;
+TOML blocks need Python 3.11 for tomllib.
 """
 from contextlib import contextmanager
 import copy
@@ -853,7 +845,7 @@ def preflight(tree, plan, exempt=()):
 
 @contextmanager
 def installer_lock(root):
-    """Serialize the writing verbs of both components in this worktree."""
+    """Serialize the writing verbs (init, sync, update, remove) in this worktree."""
     path = git(root, 'rev-parse', '--path-format=absolute', '--git-path', 'project-files.lock').stdout.decode().strip()
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
     try:

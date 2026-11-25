@@ -40,8 +40,6 @@ Nothing else in the tooling depends on the layout. At `80d6118`:
 - `scripts/common.sh` derives ic2 server names from the checkout path.
 - The installer lock uses `git rev-parse --git-path project-files.lock`,
   one per checkout.
-- agent-board keeps its board under `--git-common-dir`, shared by all
-  checkouts as intended.
 
 ## Goal and definition of done
 
@@ -132,14 +130,12 @@ the real safeguard and this step is a backstop.
 ## 4. Rename "main worktree" to "jEdit worktree"
 
 - `extension/skills/isabelle-proving/SKILL.md`: the frontmatter
-  description, the two workflow bullets and the sentence after them, the
-  delegation section ("inspects the main worktree first"), and the
-  `token:jedit` description.
+  description, the two workflow bullets and the sentence after them, and
+  the delegation section ("inspects the main worktree first").
 - `extension/skills/isabelle-modeling/SKILL.md`, the paragraph that defers
   theory editing to `isabelle-proving`.
 - `agents/ic2-prover.instructions.md`: the opening paragraph, "Assigned
-  worktree", the I/R sentence under "Tooling", and the `token:jedit`
-  sentence.
+  worktree", and the I/R sentence under "Tooling".
 - `scripts/render-agents.sh`: the `DESCRIPTION` string and the comment above
   `[mcp_servers.iq]`.
 - `docs/jai-agent-isolation.md`: replace `-r "$MAIN/.git"` with the path

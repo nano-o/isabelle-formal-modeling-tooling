@@ -176,20 +176,9 @@ session is the finished setup. Then hand over: in a code project to
 the statement of what was established; in a theory project to
 `isabelle-proving`.
 
-## Several agents: the coordination board
-
-A project may also use agent-board, a separate tool, so that several agents
-working in one repository see each other's claims. The Isabelle tooling
-never installs or upgrades it. When the user wants it, show them, from the
-agent-board clone's README: put `agent-board` on `PATH`, then run
-`agent-board init` and optionally `agent-board install-hook` in the
-project, and start a new session. With `agent-board.conf` present, doctor
-also runs the board's doctor, and the proving skill and worker profiles
-name the proof resources and the two delegation modes.
-
 ## What this skill never does
 
 Install or configure Claude Code or Codex CLI, or an Isabelle plugin for
 them; download Isabelle; write under `$HOME` on its own; register a
 project's own AutoCorrode copy as a component; nest the tooling clone inside
-a project checkout; install the coordination board.
+a project checkout.

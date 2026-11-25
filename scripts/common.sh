@@ -441,38 +441,6 @@ jedit_owns() {
   JEDIT_OWNER="pid $(sed -n 's/^pid=//p' "$record"), write root $(sed -n 's/^root=//p' "$record")"
 }
 
-# ---------------------------------------------------------------------------
-# agent-board, optional
-#
-# A checkout uses agent-board when agent-board.conf is at its root. The
-# executable is AGENT_BOARD_COMMAND (one absolute path, no arguments), else
-# agent-board on PATH; its identity is the resolved real path. The tooling
-# never reads the board's descriptor or storage.
-
-# The agent-board interface this adapter supports; doctor requires the
-# executable's `version --json` to report it, with the doctor and project
-# capabilities.
-# shellcheck disable=SC2034
-AGENT_BOARD_INTERFACE=1
-
-# board_configured CHECKOUT_ROOT: whether the checkout uses agent-board.
-board_configured() {
-  [[ -f "$1/agent-board.conf" ]]
-}
-
-# resolve_agent_board: print the resolved real path of the agent-board
-# executable, or fail when it does not resolve.
-resolve_agent_board() {
-  local cmd="${AGENT_BOARD_COMMAND:-}"
-  if [[ -n "$cmd" ]]; then
-    [[ "$cmd" == /* && -f "$cmd" && -x "$cmd" ]] || return 1
-  else
-    cmd="$(command -v agent-board 2>/dev/null)" || return 1
-    [[ "$cmd" == /* ]] || return 1
-  fi
-  readlink -f -- "$cmd"
-}
-
 # descendant_pids PID: every descendant of PID, one per line, or nothing when
 # the process table is not visible from here.
 descendant_pids() {

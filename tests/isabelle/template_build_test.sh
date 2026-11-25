@@ -8,7 +8,10 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$(cd "$TEST_DIR/../.." && pwd -P)"
 OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/isabelle-template-build-test.XXXXXX")"
 HEAPS="$(isabelle getenv -b ISABELLE_HEAPS)"
-ISABELLE_VERSION="$(isabelle version)"
+# An Isabelle2026 run renders an Isabelle2026 descriptor; any other release,
+# a release candidate say, renders the default, as the renderer accepts no other.
+release_options=()
+[[ "$(isabelle version)" != Isabelle2026 ]] || release_options=(--isabelle-version Isabelle2026)
 SESSIONS=(Template_Build_Code Template_Build_Theory)
 # The builds leave only their logs in the user's heap directory; remove them.
 cleanup() {
@@ -42,7 +45,7 @@ build() {
   local kind="$1" session="$2" stage="$OUT_DIR/$1"
   mkdir "$stage"
   "$runtime/scripts/new-project.sh" --revision "$revision" --stage "$stage" --session "$session" \
-    --project-name "the $kind template" --kind "$kind" --isabelle-version "$ISABELLE_VERSION"
+    --project-name "the $kind template" --kind "$kind" "${release_options[@]}"
   isabelle build -D "$stage/formal" >"$OUT_DIR/$kind.log" 2>&1 ||
     { tail -40 "$OUT_DIR/$kind.log" >&2; fail "$kind: the rendered session does not build"; }
   echo "template_build_test: $kind ok"

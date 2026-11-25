@@ -7,8 +7,10 @@ formal-modeling tooling:
   checkout's `isabelle-tooling.conf`
 - Isabelle release: `isabelle_version` in the checkout's `isabelle-tooling.conf`
 
-Build the session with `isabelle build -D @FORMAL_REL@`. The root `AGENTS.md`
-points to the project's proof workflow. Run
-`"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" doctor` to check the setup.
+Run `"$ISABELLE_TOOLING_ROOT/bin/isabelle-tooling" doctor` to check the
+setup; it also names the Isabelle executable of that release. Build the
+session with that executable: `isabelle build -D @FORMAL_REL@`. With several
+releases installed, a bare `isabelle` on `PATH` may be another one. The root
+`AGENTS.md` points to the project's proof workflow.
 `AGENTS.md` here carries the project's own notes for agents
 (`CLAUDE.md` is a symlink to it).

@@ -2,5 +2,9 @@
 command = "bash"
 args = ["-c", "exec \"$ISABELLE_TOOLING_ROOT/extension/bin/pide-ai.sh\""]
 env_vars = ["ISABELLE_TOOLING_ROOT", "ISABELLE_TOOLING_ISABELLE2026", "ISABELLE_TOOLING_ISABELLE", "USER_HOME"]
+# The server answers before the session is built (PIDE AI's
+# pide_ai_await_option_sessions is off), so startup is quick. A tool call
+# waits as long as the agent's timeout_ms asks, which on a first session build
+# can take far longer than five minutes; 7200 is the ic2 worker's bound too.
 startup_timeout_sec = 60
-tool_timeout_sec = 300
+tool_timeout_sec = 7200

@@ -26,21 +26,32 @@
                 aborts the whole run with a message naming the line: the
                 output is never a partial answer that looks complete.
 
-      resident  print `#ready`, then answer one line of input per line of
-                standard output until end of file. Input is the file named by
-                ISABELLE_MODEL_RUNNER_INPUT (a FIFO the driver fills from its
-                own standard input, because `isabelle ML_process` closes the
-                ML process's standard input), or standard input if unset. A
-                rejected record answers `#reject<TAB>LINE<TAB>MESSAGE`, a
-                crash answers `#error<TAB>LINE<TAB>MESSAGE`; a blank line
-                answers `#`. All keep the one-line-per-line alignment.
-                Clients discard everything before `#ready`.
+      resident  open the input, print `#ready`, then answer one line of input
+                per line of standard output until end of file. Input is the
+                file named by ISABELLE_MODEL_RUNNER_INPUT (a FIFO the driver
+                fills from its own standard input, because `isabelle
+                ML_process` closes the ML process's standard input), or
+                standard input if unset. A rejected record answers
+                `#reject<TAB>LINE<TAB>MESSAGE`, a crash answers
+                `#error<TAB>LINE<TAB>MESSAGE`; a blank line answers `#`. All
+                keep the one-line-per-line alignment. Clients discard
+                everything before `#ready`, and every failure comes before
+                it.
 *)
 
 structure Model_Runner =
 struct
 
-fun fail text = error ("model-runner: " ^ text)
+(* The message goes to standard error, the diagnostic channel. The raised
+   ERROR ends the process with a failure status, and the toplevel prints it
+   on standard output too; in resident mode that is before `#ready`, where
+   clients discard it. *)
+fun fail text =
+  let val message = "model-runner: " ^ text in
+    TextIO.output (TextIO.stdErr, message ^ "\n");
+    TextIO.flushOut TextIO.stdErr;
+    error message
+  end
 
 fun getenv_option name =
   (case getenv name of
@@ -100,12 +111,14 @@ fun batch input_path output_path =
 fun resident input_path =
   let
     fun emit text = (TextIO.output (TextIO.stdOut, text ^ "\n"); TextIO.flushOut TextIO.stdOut)
-    val _ = emit "#ready"
+    (* Opening a FIFO waits for its writer; the driver's forwarder opens the
+       other end at once. *)
     val input =
       (case input_path of
         NONE => TextIO.stdIn
       | SOME path => TextIO.openIn path
           handle IO.Io _ => fail ("cannot open input: " ^ path))
+    val _ = emit "#ready"
     fun loop line_number =
       (case TextIO.inputLine input of
         NONE => ()

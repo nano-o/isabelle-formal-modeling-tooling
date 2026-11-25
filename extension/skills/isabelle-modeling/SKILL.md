@@ -217,10 +217,13 @@ only caller never reads.
    the `isabelle-differential` skill.
 7. Properties: state them over the code-level definitions (or their proved
    characterizations), try `quickcheck` and `nitpick` first, then prove
-   using the proof workflow named in the root `AGENTS.md`.
+   under the project's proof skill: `isabelle-proving` in an Isabelle2025-2
+   project, `isabelle-pide-ai` in an Isabelle2026 one. A project has only
+   its own.
 
-Follow the project's proof skill when editing theories. On disk, Isabelle
-symbols are ASCII escapes.
+Edit theories as that skill says. Under `isabelle-proving`, that is through
+Isabelle/IQ in the jEdit worktree or ic2 in an ic2 worktree, as chosen by
+the invoker. On disk, Isabelle symbols are ASCII escapes.
 
 ## 4. Reviewing a code-level model
 

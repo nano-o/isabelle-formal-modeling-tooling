@@ -73,8 +73,7 @@ assert codex_iq["env_vars"] == ["ISABELLE_TOOLING_ROOT", "IQ_TOKEN_FILE", "XDG_C
 assert codex_iq["env"] == claude_iq["env"]
 assert set(codex_iq) == {"command", "args", "env_vars", "env"}, set(codex_iq)
 
-# The plugin route ended with extension v0.7.1;
-# the board, which installs its own digest hook, is not part of the tooling.
+# The plugin route ended with extension v0.7.1.
 for gone in (".claude-plugin", ".agents/plugins", "extension/.claude-plugin", "extension/.codex-plugin",
              "extension/.mcp.json", "extension/codex", "extension/hooks", "scripts/release.sh"):
     assert not (REPO_ROOT / gone).exists(), gone

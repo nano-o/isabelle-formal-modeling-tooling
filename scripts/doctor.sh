@@ -19,9 +19,8 @@ usage() {
 Usage: doctor.sh [--project-root DIR] [--allow-dirty]
 
 Check the project's descriptor and project files, the tooling clone, the host
-Isabelle and agent configuration, the prover tooling for the project's release,
-and agent-board when configured. Prints remediation commands without running
-them or writing files.
+Isabelle and agent configuration, and the prover tooling for the project's
+release. Prints remediation commands without running them or writing files.
 
   --project-root DIR  Checkout to diagnose (default: nearest descriptor above $PWD)
   --allow-dirty       Pass with a modified tooling clone or submodule, or skills
@@ -71,10 +70,13 @@ expected_isabelle="${PROJECT_CONF[isabelle_version]:-Isabelle2025-2}"
 use_pide_ai=false
 find_project_executable=find_isabelle
 isabelle_env=ISABELLE_TOOLING_ISABELLE
+# find_isabelle tries PATH first, so its variable cannot override a wrong release there.
+wrong_release_hint="Put the bin/ of $expected_isabelle first on PATH; $isabelle_env is read only when no isabelle is on PATH."
 if [[ "$expected_isabelle" == Isabelle2026 ]]; then
   use_pide_ai=true
   find_project_executable=find_isabelle2026
   isabelle_env=ISABELLE_TOOLING_ISABELLE2026
+  wrong_release_hint="Set $isabelle_env to its installation directory or executable."
 fi
 
 # --- ISABELLE_TOOLING_ROOT ------------------------------------------------------------
@@ -100,7 +102,7 @@ if ISABELLE_CMD="$("$find_project_executable")"; then
     ok "$expected_isabelle: $ISABELLE_CMD"
     isabelle_home_user="$("$ISABELLE_CMD" getenv -b ISABELLE_HOME_USER 2>/dev/null || true)"
   else
-    problem "Expected $expected_isabelle, found ${isabelle_version:-unusable} at $ISABELLE_CMD. Set $isabelle_env or check PATH."
+    problem "Expected $expected_isabelle, found ${isabelle_version:-unusable} at $ISABELLE_CMD. $wrong_release_hint"
   fi
 else
   problem "Isabelle not found. Install $expected_isabelle from https://isabelle.in.tum.de, then put its bin/ on PATH or set $isabelle_env."
@@ -338,48 +340,6 @@ elif "$IR_VENV_DIR/bin/python3" -c 'import mcp, prompt_toolkit; from mcp.server.
 else
   problem "I/R imports fail in the tooling venv; rerun $TOOLING_ROOT/scripts/setup-ir-venv.sh"
 fi
-fi
-
-# --- agent-board, optional ----------------------------------------------------------------
-#
-# Only when the project has agent-board.conf. The tooling never reads the
-# board's storage or descriptor: it checks the interface and runs board doctor.
-
-if [[ "$descriptor_ok" == true ]] && board_configured "$PROJECT_CHECKOUT_ROOT"; then
-  board_interface=""
-  board_missing=""
-  if ! board="$(resolve_agent_board)"; then
-    problem "board: this project has agent-board.conf, but agent-board does not resolve; put it on PATH or set AGENT_BOARD_COMMAND to its absolute path"
-  elif ! board_version="$(timeout 10 "$board" version --json 2>/dev/null)" ||
-       ! { read -r board_interface && read -r board_missing; } < <(printf '%s' "$board_version" | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-print(data["interface"])
-print(" ".join(sorted({"doctor", "project"} - set(data["capabilities"]))) or "-")' 2>/dev/null); then
-    problem "board: $board version --json failed or printed no valid object"
-  elif [[ "$board_interface" != "$AGENT_BOARD_INTERFACE" ]]; then
-    problem "board: $board has interface $board_interface; this tooling supports interface $AGENT_BOARD_INTERFACE"
-  elif [[ "$board_missing" != "-" ]]; then
-    problem "board: $board lacks the capabilities: $board_missing"
-  else
-    board_args=(doctor --json --project-root "$PROJECT_CHECKOUT_ROOT")
-    [[ "$ALLOW_DIRTY" == true ]] && board_args+=(--allow-dirty)
-    board_rc=0
-    board_report="$(timeout 60 "$board" "${board_args[@]}" 2>/dev/null)" || board_rc=$?
-    if [[ "$board_rc" -ne 0 && "$board_rc" -ne 1 ]] ||
-       ! board_lines="$(printf '%s' "$board_report" | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-tags = {"ok": "[OK]  ", "note": "[NOTE]", "fail": "[FAIL]"}
-for check in data["checks"]:
-    print(tags[check["status"]], check["id"] + ":", " ".join(check["message"].split()))' 2>/dev/null)"; then
-      problem "board: $board doctor could not run (exit $board_rc); run it yourself for details"
-    else
-      relay "board: " <<<"$board_lines"
-    fi
-  fi
-elif [[ "$descriptor_ok" == true ]]; then
-  ok "No agent-board.conf: this project does not use the coordination board"
 fi
 
 if ((failures == 0)); then

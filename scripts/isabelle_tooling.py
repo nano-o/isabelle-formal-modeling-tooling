@@ -2,8 +2,8 @@
 """The Isabelle tooling's command interface: skill inspection and project files.
 
 bin/isabelle-tooling is the entry point; it sends `doctor` to doctor.sh and
-everything else here. The installer in project_files.py uses the same
-delivery rules as agent-board, with hooks for selecting an Isabelle workflow.
+everything else here. project_files.py handles managed project files, and
+ToolingSpec selects the manifest for the project's Isabelle release.
 """
 import argparse
 import os
@@ -112,14 +112,30 @@ def skill_revision(spec, project_root):
 
 
 def manifest_skills(spec, revision, values):
-    """The supported kinds (empty before kinds), and (name, source, kinds) per skill; kinds None means all."""
+    """The supported kinds (empty before kinds), the releases read, and (name, source, kinds, releases) per
+    skill; kinds None means all.
+
+    In a project, the skills of its release's manifest. Outside one, those of every release REVISION has a
+    manifest for, each with the releases that install it, so the Isabelle2026 skill can be read before a
+    project opts in."""
     import json
-    manifest_path = spec.manifest_for(values)
-    try:
-        manifest = json.loads(spec.runtime.blob(revision, manifest_path))
-    except Broken:
-        raise Broken(f'{revision} has no {manifest_path}') from None
-    return manifest.get('kinds', []), [(s['name'], s['source'], s.get('kinds')) for s in manifest.get('skills', [])]
+    if values:
+        manifests = [(values.get('isabelle_version'), spec.manifest_for(values))]
+    else:
+        manifests = [(release, spec.manifest_for({'isabelle_version': release})) for release in ISABELLE_VERSIONS]
+    supported, releases, skills = [], [], {}
+    for release, manifest_path in manifests:
+        try:
+            manifest = json.loads(spec.runtime.blob(revision, manifest_path))
+        except Broken:
+            continue  # a revision from before this release's manifest
+        releases.append(release)
+        supported += [kind for kind in manifest.get('kinds', []) if kind not in supported]
+        for skill in manifest.get('skills', []):
+            skills.setdefault(skill['name'], (skill['source'], skill.get('kinds'), []))[2].append(release)
+    if not releases:
+        raise Broken(f'{revision} has no {manifests[0][1]}')
+    return supported, releases, [(name, source, kinds, found) for name, (source, kinds, found) in skills.items()]
 
 
 def description(text):
@@ -136,20 +152,23 @@ def description(text):
 def skills(args, spec):
     revision, where, values = skill_revision(spec, args.project_root)
     kind = values.get('model_kind', 'code') if values else None
-    supported, available = manifest_skills(spec, revision, values)
+    supported, releases, available = manifest_skills(spec, revision, values)
     if args.skills_action == 'list':
-        # Each skill's kinds, once the revision has kinds; in a project, the skills its kind leaves out.
+        # Each skill's kinds, once the revision has kinds; outside a project, a skill only some releases
+        # install; in a project, the skills its kind leaves out.
         here = kind is not None and kind in supported
         out = f'isabelle-tooling skills at {revision} ({where})' + (f', for a {kind} project' if here else '') + '\n'
-        for name, source, kinds in available:
+        for name, source, kinds, found in available:
             text = spec.runtime.blob(revision, f'{source}/SKILL.md').decode()
-            notes = ', '.join(kinds or supported)
+            notes = [', '.join(kinds or supported)] if supported else []
+            if len(found) < len(releases):
+                notes.append(' and '.join(found) + ' only')
             if here and kinds and kind not in kinds:
-                notes += '; not installed here'
-            out += f'{name}' + (f' [{notes}]' if supported else '') + f': {description(text)}\n'
+                notes.append('not installed here')
+            out += f'{name}' + (f' [{"; ".join(notes)}]' if notes else '') + f': {description(text)}\n'
         sys.stdout.write(out)
         return 0
-    source = {name: source for name, source, _ in available}.get(args.name)
+    source = {name: source for name, source, _, _ in available}.get(args.name)
     if source is None:
         print(f'isabelle-tooling: no skill named {args.name!r} at {revision}; `isabelle-tooling skills list` '
               'names them', file=sys.stderr)

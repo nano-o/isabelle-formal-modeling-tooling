@@ -1,7 +1,6 @@
 # Validation records
 
-`stable` names the commit that appended the newest entry below. There is
-none yet: the next validation record starts the list. Each entry
+`stable` names the commit that appended the newest entry below. Each entry
 is a validation record commit: the commit at which the fixtures below
 passed, plus the entry itself. The mechanical checks are rerun at exactly
 that commit before `stable` moves to it.
